@@ -84,11 +84,11 @@ function WaterfallChart({ items }: { items: { label: string; value: number; pct:
       {/* Legend rows */}
       <div className="space-y-1.5">
         {items.map((d) => (
-          <div key={d.label} className="flex items-center gap-2 text-sm">
+          <div key={d.label} className="flex items-center gap-2 text-xs sm:text-sm min-w-0">
             <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: d.color }} />
-            <span className="text-zinc-400 flex-1">{d.label}</span>
-            <span className="tabular-nums text-zinc-200 font-medium">${fmt(d.value)}</span>
-            <span className="tabular-nums text-zinc-500 w-16 text-right">{d.pct.toFixed(1)}%</span>
+            <span className="text-zinc-400 flex-1 truncate">{d.label}</span>
+            <span className="tabular-nums text-zinc-200 font-medium shrink-0">${fmt(d.value)}</span>
+            <span className="tabular-nums text-zinc-500 w-12 sm:w-16 text-right shrink-0">{d.pct.toFixed(1)}%</span>
           </div>
         ))}
       </div>
@@ -194,16 +194,19 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
       {/* Header */}
-      <header className="border-b border-zinc-800 px-6 py-4 flex items-center gap-3 shrink-0">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center font-bold text-sm text-slate-900 shrink-0">G$</div>
-        <h1 className="text-lg font-semibold tracking-tight">Global App &amp; SaaS Revenue Simulator</h1>
-        <span className="ml-2 text-xs font-medium bg-teal-500/15 text-teal-400 px-2.5 py-0.5 rounded-full border border-teal-500/25">v2.0 Pro</span>
+      <header className="border-b border-zinc-800 px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center font-bold text-xs sm:text-sm text-slate-900 shrink-0">G$</div>
+        <h1 className="text-sm sm:text-lg font-semibold tracking-tight leading-tight">
+          <span className="sm:hidden">Revenue Simulator</span>
+          <span className="hidden sm:inline">Global App &amp; SaaS Revenue Simulator</span>
+        </h1>
+        <span className="ml-auto sm:ml-2 text-[10px] sm:text-xs font-medium bg-teal-500/15 text-teal-400 px-2 sm:px-2.5 py-0.5 rounded-full border border-teal-500/25 shrink-0">v2.0 Pro</span>
       </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-12">
-        <section className="grid lg:grid-cols-[420px_1fr] gap-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-6 sm:py-8 space-y-8 sm:space-y-12">
+        <section className="grid lg:grid-cols-[420px_1fr] gap-4 sm:gap-6">
           {/* ═══ LEFT: FORM ═══ */}
-          <div className="bg-zinc-800/70 border border-zinc-700/50 rounded-2xl p-5 space-y-5 self-start lg:sticky lg:top-8">
+          <div className="bg-zinc-800/70 border border-zinc-700/50 rounded-2xl p-4 sm:p-5 space-y-4 sm:space-y-5 self-start lg:sticky lg:top-8">
             <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Configuration</h2>
 
             {/* Entity */}
@@ -328,7 +331,7 @@ export default function Home() {
           {/* ═══ RIGHT: DASHBOARD ═══ */}
           <div className="space-y-6">
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
               {[
                 { label: "Gross Sales", value: totals.gross, color: "text-zinc-100" },
                 { label: "Transactions", value: transactions, color: "text-zinc-100", isCount: true },
@@ -337,28 +340,28 @@ export default function Home() {
                 { label: "WHT", value: totals.wht, color: "text-purple-400", prefix: "−" },
                 { label: "Net Revenue", value: totals.net, color: "text-emerald-400" },
               ].map((kpi) => (
-                <div key={kpi.label} className="bg-zinc-800/70 border border-zinc-700/50 rounded-xl p-4">
-                  <p className="text-xs text-zinc-400 mb-1">{kpi.label}</p>
-                  <p className={`text-lg font-bold tabular-nums ${kpi.color}`}>
+                <div key={kpi.label} className="bg-zinc-800/70 border border-zinc-700/50 rounded-xl p-3 sm:p-4 min-w-0">
+                  <p className="text-[11px] sm:text-xs text-zinc-400 mb-1 truncate">{kpi.label}</p>
+                  <p className={`text-base sm:text-lg font-bold tabular-nums truncate ${kpi.color}`}>
                     {"isCount" in kpi && kpi.isCount
                       ? kpi.value.toLocaleString()
                       : `${kpi.prefix ?? ""}$${fmt(kpi.value)}`}
                   </p>
                   {kpi.label === "Net Revenue" && (
-                    <p className="text-xs text-zinc-500 mt-0.5">Margin {margin.toFixed(1)}%</p>
+                    <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5">Margin {margin.toFixed(1)}%</p>
                   )}
                   {kpi.label === "Transactions" && (
-                    <p className="text-xs text-zinc-500 mt-0.5">Avg ${transactions > 0 ? fmt(grossSales / transactions) : "0.00"}/tx</p>
+                    <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5 truncate">Avg ${transactions > 0 ? fmt(grossSales / transactions) : "0.00"}/tx</p>
                   )}
                 </div>
               ))}
             </div>
 
             {/* Waterfall Chart */}
-            <div className="bg-zinc-800/70 border border-zinc-700/50 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-4">
+            <div className="bg-zinc-800/70 border border-zinc-700/50 rounded-xl p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                 <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Revenue Waterfall</h3>
-                <div className="text-xs text-zinc-500">
+                <div className="text-[11px] sm:text-xs text-zinc-500">
                   Net Retention <span className="text-emerald-400 font-medium">{margin.toFixed(1)}%</span>
                   <span className="mx-2 text-zinc-700">·</span>
                   Total Leakage <span className="text-red-400 font-medium">{(100 - margin).toFixed(1)}%</span>
@@ -374,40 +377,40 @@ export default function Home() {
                   <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Country Breakdown</h3>
                 </div>
                 <div className="overflow-auto max-h-[320px]">
-                  <table className="w-full text-sm border-separate border-spacing-0">
+                  <table className="w-full text-xs sm:text-sm border-separate border-spacing-0">
                     <thead className="sticky top-0 z-10">
-                      <tr className="text-zinc-400 text-xs uppercase tracking-wider bg-zinc-800">
-                        <th className="text-left px-4 py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Market</th>
-                        <th className="text-right px-4 py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Gross</th>
-                        <th className="text-right px-4 py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Tax</th>
-                        <th className="text-right px-4 py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Commission</th>
-                        <th className="text-right px-4 py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">WHT</th>
-                        <th className="text-right px-4 py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Net</th>
-                        <th className="text-right px-4 py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Margin</th>
+                      <tr className="text-zinc-400 text-[10px] sm:text-xs uppercase tracking-wider bg-zinc-800">
+                        <th className="text-left px-2 sm:px-4 py-2 sm:py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Market</th>
+                        <th className="text-right px-2 sm:px-4 py-2 sm:py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Gross</th>
+                        <th className="text-right px-2 sm:px-4 py-2 sm:py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Tax</th>
+                        <th className="text-right px-2 sm:px-4 py-2 sm:py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Comm.</th>
+                        <th className="text-right px-2 sm:px-4 py-2 sm:py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">WHT</th>
+                        <th className="text-right px-2 sm:px-4 py-2 sm:py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50">Net</th>
+                        <th className="text-right px-2 sm:px-4 py-2 sm:py-2.5 font-medium bg-zinc-800 border-b border-zinc-700/50 hidden sm:table-cell">Margin</th>
                       </tr>
                     </thead>
                     <tbody>
                       {results.map((r) => (
                         <tr key={r.code} className="hover:bg-zinc-700/20 transition-colors">
-                          <td className="px-4 py-2.5 text-zinc-200 font-medium border-b border-zinc-700/30">{r.name} <span className="text-zinc-500">({r.code})</span></td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-zinc-200 border-b border-zinc-700/30">${fmt(r.gross)}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-red-400 border-b border-zinc-700/30">{r.tax > 0 ? `−$${fmt(r.tax)}` : "—"}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-orange-400 border-b border-zinc-700/30">−${fmt(r.commission)}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-purple-400 border-b border-zinc-700/30">{r.wht > 0 ? `−$${fmt(r.wht)}` : "—"}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-emerald-400 font-medium border-b border-zinc-700/30">${fmt(r.net)}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-zinc-300 border-b border-zinc-700/30">{r.gross > 0 ? `${((r.net / r.gross) * 100).toFixed(1)}%` : "—"}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-zinc-200 font-medium border-b border-zinc-700/30 whitespace-nowrap">{r.name} <span className="text-zinc-500 hidden sm:inline">({r.code})</span></td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-zinc-200 border-b border-zinc-700/30 whitespace-nowrap">${fmt(r.gross)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-red-400 border-b border-zinc-700/30 whitespace-nowrap">{r.tax > 0 ? `−$${fmt(r.tax)}` : "—"}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-orange-400 border-b border-zinc-700/30 whitespace-nowrap">−${fmt(r.commission)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-purple-400 border-b border-zinc-700/30 whitespace-nowrap">{r.wht > 0 ? `−$${fmt(r.wht)}` : "—"}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-emerald-400 font-medium border-b border-zinc-700/30 whitespace-nowrap">${fmt(r.net)}</td>
+                          <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-zinc-300 border-b border-zinc-700/30 whitespace-nowrap hidden sm:table-cell">{r.gross > 0 ? `${((r.net / r.gross) * 100).toFixed(1)}%` : "—"}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot className="sticky bottom-0 z-10">
                       <tr className="font-semibold">
-                        <td className="px-4 py-2.5 text-zinc-200 bg-zinc-900 border-t-2 border-zinc-600">Total</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-200 bg-zinc-900 border-t-2 border-zinc-600">${fmt(totals.gross)}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-red-400 bg-zinc-900 border-t-2 border-zinc-600">{totals.tax > 0 ? `−$${fmt(totals.tax)}` : "—"}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-orange-400 bg-zinc-900 border-t-2 border-zinc-600">−${fmt(totals.commission)}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-purple-400 bg-zinc-900 border-t-2 border-zinc-600">{totals.wht > 0 ? `−$${fmt(totals.wht)}` : "—"}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-emerald-400 bg-zinc-900 border-t-2 border-zinc-600">${fmt(totals.net)}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-zinc-300 bg-zinc-900 border-t-2 border-zinc-600">{margin.toFixed(1)}%</td>
+                        <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-zinc-200 bg-zinc-900 border-t-2 border-zinc-600 whitespace-nowrap">Total</td>
+                        <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-zinc-200 bg-zinc-900 border-t-2 border-zinc-600 whitespace-nowrap">${fmt(totals.gross)}</td>
+                        <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-red-400 bg-zinc-900 border-t-2 border-zinc-600 whitespace-nowrap">{totals.tax > 0 ? `−$${fmt(totals.tax)}` : "—"}</td>
+                        <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-orange-400 bg-zinc-900 border-t-2 border-zinc-600 whitespace-nowrap">−${fmt(totals.commission)}</td>
+                        <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-purple-400 bg-zinc-900 border-t-2 border-zinc-600 whitespace-nowrap">{totals.wht > 0 ? `−$${fmt(totals.wht)}` : "—"}</td>
+                        <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-emerald-400 bg-zinc-900 border-t-2 border-zinc-600 whitespace-nowrap">${fmt(totals.net)}</td>
+                        <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-zinc-300 bg-zinc-900 border-t-2 border-zinc-600 whitespace-nowrap hidden sm:table-cell">{margin.toFixed(1)}%</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -418,8 +421,8 @@ export default function Home() {
         </section>
 
         {/* ═══ SEO ARTICLE ═══ */}
-        <article className="max-w-4xl mx-auto space-y-6 text-zinc-300 leading-relaxed">
-          <h2 className="text-2xl font-bold text-zinc-100">
+        <article className="max-w-4xl mx-auto space-y-5 sm:space-y-6 text-sm sm:text-base text-zinc-300 leading-relaxed">
+          <h2 className="text-xl sm:text-2xl font-bold text-zinc-100">
             Navigating App Store Tax &amp; Withholding Tax (WHT) for Global Developers
           </h2>
           <p>
@@ -429,7 +432,7 @@ export default function Home() {
             This simulator models the complete revenue waterfall across dozens of countries, using the actual consumption tax rates that Apple and Google apply in each jurisdiction. By selecting multiple target markets, developers can compare the net revenue impact of selling in, say, Hungary (27% VAT) versus the United States (0% platform-collected consumption tax) — and see exactly how much each layer of taxation costs them in absolute dollars.
           </p>
 
-          <h3 className="text-xl font-semibold text-zinc-100 pt-4">
+          <h3 className="text-lg sm:text-xl font-semibold text-zinc-100 pt-4">
             The Hidden Cost of WHT in Brazil &amp; Taiwan
           </h3>
           <p>
@@ -439,7 +442,7 @@ export default function Home() {
             Taiwan presents a more moderate but still noteworthy WHT regime. Both Apple and Google withhold 3% of the developer&apos;s proceeds (after commission). While 3% sounds trivial, when stacked on top of Taiwan&apos;s 5% VAT and the platform commission, the cumulative leakage can surprise developers who projected revenue using only the headline commission rate. For developers scaling across APAC, these small percentages compound into significant absolute numbers that directly impact unit economics and payback periods.
           </p>
 
-          <h3 className="text-xl font-semibold text-zinc-100 pt-4">
+          <h3 className="text-lg sm:text-xl font-semibold text-zinc-100 pt-4">
             Small Business Program vs. Standard 30%
           </h3>
           <p>
@@ -455,12 +458,12 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-zinc-800 px-6 py-6 text-center text-sm text-zinc-500">
-        <p>&copy; 2026 Global App &amp; SaaS Revenue Simulator. All rights reserved.</p>
-        <p className="text-xs text-zinc-600 mt-1">
+      <footer className="border-t border-zinc-800 px-4 sm:px-6 py-6 text-center text-sm text-zinc-500">
+        <p className="text-xs sm:text-sm">&copy; 2026 Global App &amp; SaaS Revenue Simulator. All rights reserved.</p>
+        <p className="text-[11px] sm:text-xs text-zinc-600 mt-1 px-2">
           Estimates only — not tax, legal, or financial advice. See <Link href="/disclaimer" className="underline hover:text-zinc-400">Disclaimer</Link>.
         </p>
-        <div className="mt-2 flex justify-center gap-4">
+        <div className="mt-3 flex justify-center gap-3 sm:gap-4 flex-wrap text-xs sm:text-sm">
           <Link href="/blog" className="hover:text-zinc-300 transition-colors">Blog</Link>
           <Link href="/privacy" className="hover:text-zinc-300 transition-colors">Privacy Policy</Link>
           <Link href="/terms" className="hover:text-zinc-300 transition-colors">Terms of Service</Link>

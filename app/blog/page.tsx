@@ -32,19 +32,22 @@ const POSTS = [
 export default function BlogIndexPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
-      <header className="border-b border-zinc-800 px-6 py-4 flex items-center gap-3 shrink-0">
-        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center font-bold text-sm text-slate-900 shrink-0">G$</div>
-          <h1 className="text-lg font-semibold tracking-tight">Global App &amp; SaaS Revenue Simulator</h1>
+      <header className="border-b border-zinc-800 px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-3 shrink-0">
+        <Link href="/" className="flex items-center gap-2 sm:gap-3 hover:opacity-80 transition-opacity min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center font-bold text-xs sm:text-sm text-slate-900 shrink-0">G$</div>
+          <h1 className="text-sm sm:text-lg font-semibold tracking-tight truncate">
+            <span className="sm:hidden">Revenue Simulator</span>
+            <span className="hidden sm:inline">Global App &amp; SaaS Revenue Simulator</span>
+          </h1>
         </Link>
       </header>
 
-      <main className="flex-1 max-w-4xl w-full mx-auto px-6 py-12">
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <Link href="/" className="text-sm text-teal-400 hover:text-teal-300 transition-colors">← Back to Simulator</Link>
 
-        <div className="mt-6 mb-10">
-          <h1 className="text-4xl font-bold text-zinc-100">Blog</h1>
-          <p className="mt-3 text-zinc-400">
+        <div className="mt-6 mb-8 sm:mb-10">
+          <h1 className="text-3xl sm:text-4xl font-bold text-zinc-100">Blog</h1>
+          <p className="mt-3 text-sm sm:text-base text-zinc-400">
             Deep-dive guides on platform economics, cross-border taxation, and payment infrastructure for independent software developers and SaaS founders.
           </p>
         </div>
@@ -54,14 +57,14 @@ export default function BlogIndexPage() {
             <Link
               key={post.slug}
               href={`/blog/${post.slug}`}
-              className="block bg-zinc-800/70 border border-zinc-700/50 rounded-xl p-6 hover:border-teal-500/50 hover:bg-zinc-800/90 transition-all group"
+              className="block bg-zinc-800/70 border border-zinc-700/50 rounded-xl p-4 sm:p-6 hover:border-teal-500/50 hover:bg-zinc-800/90 transition-all group"
             >
-              <div className="flex items-center gap-3 text-xs text-zinc-500 mb-2">
+              <div className="flex items-center gap-2 sm:gap-3 text-[11px] sm:text-xs text-zinc-500 mb-2 flex-wrap">
                 <span>{post.date}</span>
                 <span>·</span>
                 <span>{post.readTime}</span>
               </div>
-              <h2 className="text-xl font-semibold text-zinc-100 group-hover:text-teal-300 transition-colors">
+              <h2 className="text-lg sm:text-xl font-semibold text-zinc-100 group-hover:text-teal-300 transition-colors leading-snug">
                 {post.title}
               </h2>
               <p className="mt-2 text-zinc-400 text-sm leading-relaxed">{post.excerpt}</p>
@@ -71,12 +74,12 @@ export default function BlogIndexPage() {
         </div>
       </main>
 
-      <footer className="border-t border-zinc-800 px-6 py-6 text-center text-sm text-zinc-500">
-        <p>&copy; 2026 Global App &amp; SaaS Revenue Simulator. All rights reserved.</p>
-        <p className="text-xs text-zinc-600 mt-1">
+      <footer className="border-t border-zinc-800 px-4 sm:px-6 py-6 text-center text-sm text-zinc-500">
+        <p className="text-xs sm:text-sm">&copy; 2026 Global App &amp; SaaS Revenue Simulator. All rights reserved.</p>
+        <p className="text-[11px] sm:text-xs text-zinc-600 mt-1 px-2">
           Estimates only — not tax, legal, or financial advice. See <Link href="/disclaimer" className="underline hover:text-zinc-400">Disclaimer</Link>.
         </p>
-        <div className="mt-2 flex justify-center gap-4">
+        <div className="mt-3 flex justify-center gap-3 sm:gap-4 flex-wrap text-xs sm:text-sm">
           <Link href="/blog" className="hover:text-zinc-300 transition-colors">Blog</Link>
           <Link href="/privacy" className="hover:text-zinc-300 transition-colors">Privacy Policy</Link>
           <Link href="/terms" className="hover:text-zinc-300 transition-colors">Terms of Service</Link>

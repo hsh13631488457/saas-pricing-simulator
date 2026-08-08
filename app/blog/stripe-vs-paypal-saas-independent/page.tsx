@@ -8,33 +8,36 @@ export const metadata = {
 export default function Post() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
-      <header className="border-b border-zinc-800 px-6 py-4 flex items-center gap-3 shrink-0">
-        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center font-bold text-sm text-slate-900 shrink-0">G$</div>
-          <h1 className="text-lg font-semibold tracking-tight">Global App &amp; SaaS Revenue Simulator</h1>
+      <header className="border-b border-zinc-800 px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-3 shrink-0">
+        <Link href="/" className="flex items-center gap-2 sm:gap-3 hover:opacity-80 transition-opacity min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center font-bold text-xs sm:text-sm text-slate-900 shrink-0">G$</div>
+          <h1 className="text-sm sm:text-lg font-semibold tracking-tight truncate">
+            <span className="sm:hidden">Revenue Simulator</span>
+            <span className="hidden sm:inline">Global App &amp; SaaS Revenue Simulator</span>
+          </h1>
         </Link>
       </header>
 
-      <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-12">
+      <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <Link href="/blog" className="text-sm text-teal-400 hover:text-teal-300 transition-colors">← Back to Blog</Link>
 
-        <article className="mt-6 space-y-6 text-zinc-300 leading-relaxed">
+        <article className="mt-6 space-y-5 sm:space-y-6 text-sm sm:text-base text-zinc-300 leading-relaxed">
           <header>
-            <h1 className="text-4xl font-bold text-zinc-100 leading-tight">Stripe vs PayPal for SaaS: Which Payment Platform Actually Costs Less?</h1>
-            <p className="mt-3 text-sm text-zinc-500">Published August 8, 2026 · 10 min read</p>
+            <h1 className="text-2xl sm:text-4xl font-bold text-zinc-100 leading-tight">Stripe vs PayPal for SaaS: Which Payment Platform Actually Costs Less?</h1>
+            <p className="mt-3 text-xs sm:text-sm text-zinc-500">Published August 8, 2026 · 10 min read</p>
           </header>
 
           <p className="text-lg text-zinc-200">
             Stripe and PayPal are the two default payment platforms for web-based SaaS and indie software businesses, and the pricing looks superficially similar. Stripe charges 2.9% + $0.30 per successful card transaction; PayPal charges 3.49% + $0.49 for its commercial transaction rate. On a $20 subscription payment, Stripe takes $0.88 and PayPal takes $1.19 — a $0.31 difference that feels trivial. But the real cost gap between the two platforms only becomes visible when you look at the pricing curve across transaction sizes, factor in the operational realities of currency conversion, dispute handling, and account stability, and account for the customer segments each platform genuinely serves better. This article works through all of that with numbers, not vibes.
           </p>
 
-          <h2 className="text-2xl font-semibold text-zinc-100 pt-4">The Headline Rates — And What They Miss</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100 pt-4">The Headline Rates — And What They Miss</h2>
           <p>
             Both platforms publish clean-looking domestic rate cards that assume a US-based business processing US-issued cards in US dollars. In that narrow scenario, the comparison is exactly what the pricing pages say:
           </p>
 
-          <div className="overflow-x-auto my-6 border border-zinc-700/50 rounded-lg">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto my-6 border border-zinc-700/50 rounded-lg -mx-4 sm:mx-0">
+            <table className="w-full text-xs sm:text-sm min-w-[500px]">
               <thead className="bg-zinc-800/70">
                 <tr className="text-zinc-400 text-xs uppercase tracking-wider">
                   <th className="text-left px-4 py-2.5 font-medium">Platform</th>
@@ -53,13 +56,13 @@ export default function Post() {
             Stripe wins on both dimensions. But those numbers don&apos;t answer the question SaaS founders actually care about: which platform costs less <em>on the transactions I actually process</em>?
           </p>
 
-          <h2 className="text-2xl font-semibold text-zinc-100 pt-4">The Break-Even Analysis Across Pricing Tiers</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100 pt-4">The Break-Even Analysis Across Pricing Tiers</h2>
           <p>
             The percentage-plus-fixed structure means the two platforms&apos; fee curves have very different shapes. At micro-transaction sizes, the fixed fee dominates and both platforms look expensive relative to the transaction. At larger transaction sizes, the percentage dominates and the fixed fee becomes negligible. Here&apos;s what the fees look like across the range of SaaS pricing that most independent businesses actually charge:
           </p>
 
-          <div className="overflow-x-auto my-6 border border-zinc-700/50 rounded-lg">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto my-6 border border-zinc-700/50 rounded-lg -mx-4 sm:mx-0">
+            <table className="w-full text-xs sm:text-sm min-w-[500px]">
               <thead className="bg-zinc-800/70">
                 <tr className="text-zinc-400 text-xs uppercase tracking-wider">
                   <th className="text-left px-4 py-2.5 font-medium">Transaction Amount</th>
@@ -85,7 +88,7 @@ export default function Post() {
             The pattern is unambiguous: Stripe is cheaper at every transaction size. On a $10 monthly subscription, PayPal costs 43% more per transaction than Stripe ($0.84 vs $0.59). On a $99 annual plan, the gap narrows to 24% ($3.94 vs $3.17). At scale — say, 1,000 monthly $20 subscriptions — the fee difference alone is $310/month, or $3,720/year. For a bootstrapped indie SaaS, that&apos;s more than the annual salary of a part-time contractor.
           </p>
 
-          <h2 className="text-2xl font-semibold text-zinc-100 pt-4">The Hidden Costs: Where the Real Gap Widens</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100 pt-4">The Hidden Costs: Where the Real Gap Widens</h2>
           <p>
             The headline rates only apply to a specific transaction profile. Once you introduce international customers, currency conversion, disputes, and micropayments, the platforms diverge substantially.
           </p>
@@ -106,7 +109,7 @@ export default function Post() {
             <strong className="text-zinc-100">Micropayment pricing.</strong> PayPal offers a specific &ldquo;micropayments&rdquo; tier of 4.99% + $0.09 for transactions under $10, which is genuinely cheaper than Stripe for very small purchases (below roughly $5). Stripe does not offer an equivalent tier without a custom deal. For a business selling $1–$3 in-app top-ups at high volume, PayPal micropayments is one of the few scenarios where PayPal is unambiguously cheaper.
           </p>
 
-          <h2 className="text-2xl font-semibold text-zinc-100 pt-4">Account Stability: The Cost You Can&apos;t Model</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100 pt-4">Account Stability: The Cost You Can&apos;t Model</h2>
           <p>
             Every SaaS founder eventually hears the horror story: PayPal froze the account, held 30% of the balance for 180 days, and offered no explanation beyond a generic risk-review email. These stories are not folklore — PayPal&apos;s account holds and rolling reserves affect a meaningful minority of merchants, particularly those in high-risk categories (digital goods, subscription services, cross-border sales) or those experiencing rapid revenue growth. The financial impact is severe: a 30% rolling reserve on $50K/month in revenue means $15K/month tied up for six months, or $90K of working capital effectively frozen.
           </p>
@@ -114,7 +117,7 @@ export default function Post() {
             Stripe is not immune to account issues — it also freezes funds and closes accounts, particularly for merchants who fail its Know Your Customer (KYC) verification or trigger fraud model heuristics. But Stripe&apos;s reputation for communication and predictability during risk reviews is materially better than PayPal&apos;s among indie developer communities. This is a soft factor that doesn&apos;t show up in fee tables but shapes long-term platform selection for any business planning to scale past $50K/month.
           </p>
 
-          <h2 className="text-2xl font-semibold text-zinc-100 pt-4">Where PayPal Still Wins</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100 pt-4">Where PayPal Still Wins</h2>
           <p>
             Despite Stripe&apos;s pricing and stability advantages, PayPal remains the correct choice in specific segments — and dismissing it entirely leaves money on the table.
           </p>
@@ -128,7 +131,7 @@ export default function Post() {
             <strong className="text-zinc-100">Micropayment volume.</strong> As noted above, PayPal&apos;s dedicated micropayments tier (4.99% + $0.09) is cheaper than Stripe for transactions under $5. High-volume, low-ticket businesses genuinely benefit.
           </p>
 
-          <h2 className="text-2xl font-semibold text-zinc-100 pt-4">Practical Recommendation for Independent SaaS</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100 pt-4">Practical Recommendation for Independent SaaS</h2>
           <p>
             For the typical bootstrapped SaaS charging $10–$99/month, targeting a global customer base, and prioritizing account stability, the pragmatic default is: <strong className="text-zinc-100">Stripe as primary, PayPal as an optional secondary checkout</strong>. This captures Stripe&apos;s superior economics on the bulk of transactions while preserving conversion on the segment of customers who prefer PayPal specifically. The engineering overhead to support both is modest — Stripe&apos;s and PayPal&apos;s SDKs are both mature, and most modern checkout libraries (or Stripe&apos;s own Checkout link) can present both options side-by-side.
           </p>
@@ -136,7 +139,7 @@ export default function Post() {
             If you&apos;re just starting out and want to launch with one platform, Stripe is the safer default across almost every axis: lower fees, more predictable payouts, better documentation, cleaner dispute handling, and better developer tooling. Only pick PayPal-first if your target audience is specifically PayPal-heavy (mainland Germany, informal marketplaces, high consumer-trust dependency).
           </p>
 
-          <h2 className="text-2xl font-semibold text-zinc-100 pt-4">Model Your Own Scenario</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold text-zinc-100 pt-4">Model Your Own Scenario</h2>
           <p>
             The <Link href="/" className="text-teal-400 hover:text-teal-300 underline">simulator on the home page</Link> lets you toggle between Stripe and PayPal as your platform, set a specific transaction count and unit price, and see the exact commission impact on your revenue waterfall across the countries you sell into. Try setting Platform to Stripe with your typical monthly subscription price and transaction count, then switch to PayPal — the Commission line updates in real time. On any non-trivial revenue base, the difference is usually much larger than founders expect.
           </p>
@@ -147,9 +150,9 @@ export default function Post() {
         </article>
       </main>
 
-      <footer className="border-t border-zinc-800 px-6 py-6 text-center text-sm text-zinc-500">
-        <p>&copy; 2026 Global App &amp; SaaS Revenue Simulator. All rights reserved.</p>
-        <div className="mt-2 flex justify-center gap-4">
+      <footer className="border-t border-zinc-800 px-4 sm:px-6 py-6 text-center text-sm text-zinc-500">
+        <p className="text-xs sm:text-sm">&copy; 2026 Global App &amp; SaaS Revenue Simulator. All rights reserved.</p>
+        <div className="mt-3 flex justify-center gap-3 sm:gap-4 flex-wrap text-xs sm:text-sm">
           <Link href="/blog" className="hover:text-zinc-300 transition-colors">Blog</Link>
           <Link href="/privacy" className="hover:text-zinc-300 transition-colors">Privacy Policy</Link>
           <Link href="/terms" className="hover:text-zinc-300 transition-colors">Terms of Service</Link>
