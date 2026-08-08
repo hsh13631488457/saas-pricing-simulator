@@ -461,6 +461,7 @@ export default function Home() {
           Estimates only — not tax, legal, or financial advice. See <Link href="/disclaimer" className="underline hover:text-zinc-400">Disclaimer</Link>.
         </p>
         <div className="mt-2 flex justify-center gap-4">
+          <Link href="/blog" className="hover:text-zinc-300 transition-colors">Blog</Link>
           <Link href="/privacy" className="hover:text-zinc-300 transition-colors">Privacy Policy</Link>
           <Link href="/terms" className="hover:text-zinc-300 transition-colors">Terms of Service</Link>
           <Link href="/disclaimer" className="hover:text-zinc-300 transition-colors">Disclaimer</Link>
