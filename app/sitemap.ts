@@ -6,6 +6,7 @@ const BLOG_SLUGS = [
   "apple-small-business-program-guide",
   "google-play-brazil-wht-deep-dive",
   "stripe-vs-paypal-saas-independent",
+  "stripe-paypal-integration-guide",
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

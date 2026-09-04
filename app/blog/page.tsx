@@ -27,6 +27,13 @@ const POSTS = [
     date: "August 8, 2026",
     readTime: "10 min read",
   },
+  {
+    slug: "stripe-paypal-integration-guide",
+    title: "How to Integrate Stripe & PayPal in a Next.js SaaS: Complete Developer Guide",
+    excerpt: "Step-by-step guide to integrating Stripe and PayPal payments in a Next.js 14 App Router SaaS — Payment Intents, PayPal Orders API, webhooks, environment variables, and production pitfalls.",
+    date: "August 8, 2026",
+    readTime: "13 min read",
+  },
 ];
 
 export default function BlogIndexPage() {
