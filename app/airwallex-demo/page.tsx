@@ -93,6 +93,12 @@ interface FormState {
   billState: string;
   billPostcode: string;
   billCountry: string;
+  /* 天枢后端下单 */
+  source: "airwallex" | "tianshu";
+  tsDeviceId: string;
+  tsCommodityId: string;
+  tsPayScene: string;
+  tsTransferParameter: string;
 }
 
 const DEFAULTS: FormState = {
@@ -148,6 +154,11 @@ const DEFAULTS: FormState = {
   billState: "",
   billPostcode: "",
   billCountry: "",
+  source: "airwallex",
+  tsDeviceId: "",
+  tsCommodityId: "",
+  tsPayScene: "website",
+  tsTransferParameter: "",
 };
 
 /* ────────── 日志 ────────── */
@@ -456,6 +467,54 @@ export default function AirwallexDemoPage() {
     pushLog("success", `凭证有效 · expires_at=${r.data?.expires_at ?? "?"}`);
   };
 
+  /* ── 天枢后端：刷新 token / 下单 ── */
+  const tianshuToken = async () => {
+    setBusy("ts-token");
+    pushLog("info", "POST /api/tianshu/refresh-token …");
+    const r = await callApi("/api/tianshu/refresh-token", {});
+    setBusy(null);
+    if (!r.ok) return pushLog("error", `刷新 token 失败 (${r.status})`, r.data);
+    pushLog("success",
+      `token 已${r.data?.cached ? "复用缓存" : "刷新"} · 过期于 ${r.data?.expiresAt ? new Date(r.data.expiresAt).toLocaleString() : "?"}`,
+      r.data);
+  };
+
+  const tianshuCreateOrder = async () => {
+    if (!f.tsDeviceId.trim()) return pushLog("error", "设备 ID 必填");
+    if (!f.tsCommodityId.trim()) return pushLog("error", "商品 ID (commodityId) 必填");
+    setBusy("ts-order");
+    pushLog("info", "POST /api/tianshu/create-order …");
+    const r = await callApi("/api/tianshu/create-order", {
+      deviceId: f.tsDeviceId.trim(),
+      commodityId: f.tsCommodityId.trim(),
+      payScene: f.tsPayScene,
+      transferParameter: f.tsTransferParameter.trim() || undefined,
+    });
+    setBusy(null);
+    if (!r.ok) return pushLog("error", `下单失败 (${r.status})`, r.data);
+
+    const d = r.data?.data ?? {};
+    if (r.data?.code !== 0 || !d.clientSecret) {
+      return pushLog("error", `天枢返回异常：${r.data?.msg ?? "code≠0"}`, r.data);
+    }
+
+    if (d.clientSecret) set("clientSecret", d.clientSecret);
+    if (d.customerId) set("customerId", d.customerId);
+    if (d.orderId) set("intentId", d.orderId);
+    if (d.orderAmount != null) {
+      set("amountValue", String(Math.round(Number(d.orderAmount) * 100)));
+    }
+    if (d.commodityName) set("totalPriceLabel", d.commodityName);
+
+    // 天枢 createAirwallexOrder 走的固定是 demo/sandbox 环境
+    set("env", "demo");
+    set("method", "applePay");
+
+    pushLog("success",
+      `下单成功 · orderId=${d.orderId ?? "?"} · 金额 $${d.orderAmount ?? "?"} · 已回填 intent_id / client_secret / customer_id`,
+      r.data);
+  };
+
   /* ── 挂载 ── */
   const mountBtn = async () => {
     const sdk = window.AirwallexComponentsSDK;
@@ -623,6 +682,76 @@ export default function AirwallexDemoPage() {
       <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* 左：表单 */}
         <div className="min-w-0 space-y-4">
+          <Card title="订单来源">
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="inline-flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="source"
+                  checked={f.source === "airwallex"}
+                  onChange={() => set("source", "airwallex")}
+                />
+                <span>直连 Airwallex（用下面的 Client ID / API Key 自己建 intent）</span>
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="source"
+                  checked={f.source === "tianshu"}
+                  onChange={() => set("source", "tianshu")}
+                />
+                <span>天枢后端下单（走你们自己的服务，返回 clientSecret 直接挂载）</span>
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              {f.source === "airwallex"
+                ? "当前：用下方「服务端凭证」区块的 Client ID / API Key 调 /api/awx/* 建单。"
+                : "当前：调 /api/tianshu/create-order 建单，App Key / Secret 固定在服务端，页面无需填写 Airwallex 凭证。"}
+            </p>
+          </Card>
+
+          {f.source === "tianshu" && (
+          <Card title="天枢后端下单（测试环境）">
+            <Row>
+              <Field label="设备 ID（deviceId）">
+                <input className="input font-mono" value={f.tsDeviceId}
+                  onChange={(e) => set("tsDeviceId", e.target.value)}
+                  placeholder="例如 20220615-001" />
+              </Field>
+              <Field label="商品 ID（commodityId）">
+                <input className="input font-mono" value={f.tsCommodityId}
+                  onChange={(e) => set("tsCommodityId", e.target.value)}
+                  placeholder="例如 10001" />
+              </Field>
+              <Field label="payScene">
+                <select className="input" value={f.tsPayScene} onChange={(e) => set("tsPayScene", e.target.value)}>
+                  <option value="website">website（官网）</option>
+                  <option value="inapp">inapp（应用内）</option>
+                </select>
+              </Field>
+              <Field label="transferParameter（可选，透传）">
+                <input className="input font-mono" value={f.tsTransferParameter}
+                  onChange={(e) => set("tsTransferParameter", e.target.value)}
+                  placeholder="留空不传" />
+              </Field>
+            </Row>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={tianshuToken} disabled={busy === "ts-token"} className="btn-secondary">
+                {busy === "ts-token" ? "…" : "刷新 Access-Token"}
+              </button>
+              <button onClick={tianshuCreateOrder} disabled={busy === "ts-order"} className="btn-primary">
+                {busy === "ts-order" ? "…" : "④ 天枢下单 → 回填 intent_id + client_secret"}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              下单成功后会自动把 intent_id / client_secret / customer_id / 金额 填进下方表单，再点右上「挂载」即可。
+              固定参数：prdId=99999962、包名 com.faxing.open、渠道 61、store=6（Airwallex）。
+            </p>
+          </Card>
+          )}
+
+          {f.source === "airwallex" && (
+          <>
           <Card title="Airwallex.js init">
             <Row>
               <Field label="env">
@@ -674,6 +803,8 @@ export default function AirwallexDemoPage() {
               </button>
             </div>
           </Card>
+          </>
+          )}
 
           <Card title="PaymentIntent（来自你的服务端）">
             <Row>
