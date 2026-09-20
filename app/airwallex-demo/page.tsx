@@ -478,7 +478,7 @@ export default function AirwallexDemoPage() {
       pushLog("info", `init({ env: '${f.env}'${f.locale ? `, locale: '${f.locale}'` : ""} })`);
       await sdk.init(initOpts);
 
-      const elType = f.method;
+      const elType = f.method === "applePay" ? "applePayButton" : f.method;
       pushLog("info", `createElement('${elType}', {…})`, config);
       const el = await sdk.createElement(elType, config);
       if (!el) return pushLog("error", "createElement 返回 null，参数可能不合法或环境不支持");
