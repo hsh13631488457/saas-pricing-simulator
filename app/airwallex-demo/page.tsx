@@ -40,6 +40,7 @@ const DEFAULT_LINE_ITEMS = JSON.stringify(
 
 /* ────────── 表单默认值 ────────── */
 interface FormState {
+  method: "applePay" | "dropIn" | "card";
   env: "demo" | "sandbox" | "prod";
   mode: "payment" | "recurring";
   locale: string;
@@ -82,9 +83,20 @@ interface FormState {
   touTotalCycles: string;
   lineItemsEnabled: boolean;
   lineItemsJson: string;
+  /* 卡支付账单信息 */
+  billFirstName: string;
+  billLastName: string;
+  billEmail: string;
+  billPhone: string;
+  billAddress: string;
+  billCity: string;
+  billState: string;
+  billPostcode: string;
+  billCountry: string;
 }
 
 const DEFAULTS: FormState = {
+  method: "applePay",
   env: "demo",
   mode: "payment",
   locale: "",
@@ -127,6 +139,15 @@ const DEFAULTS: FormState = {
   touTotalCycles: "",
   lineItemsEnabled: false,
   lineItemsJson: DEFAULT_LINE_ITEMS,
+  billFirstName: "",
+  billLastName: "",
+  billEmail: "",
+  billPhone: "",
+  billAddress: "",
+  billCity: "",
+  billState: "",
+  billPostcode: "",
+  billCountry: "",
 };
 
 /* ────────── 日志 ────────── */
@@ -134,6 +155,10 @@ type LogLevel = "info" | "warn" | "error" | "success";
 interface LogRow { id: number; time: string; level: LogLevel; msg: string; data?: unknown; }
 
 /* ────────── 组装 config ────────── */
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function buildConsent(f: FormState) {
   const pc: any = { next_triggered_by: f.consentNextTriggeredBy };
   if (f.consentNextTriggeredBy === "merchant") pc.merchant_trigger_reason = f.consentTriggerReason;
@@ -141,7 +166,7 @@ function buildConsent(f: FormState) {
     const tou: any = {
       payment_amount_type: f.touAmountType,
       payment_currency: (f.touCurrency || f.currency || "USD").toUpperCase(),
-      start_date: f.touStartDate || new Date().toISOString().slice(0, 10),
+      start_date: f.touStartDate || todayISO(),
     };
     if (f.touAmountType === "FIXED" && f.touFixedAmount) tou.fixed_payment_amount = Number(f.touFixedAmount);
     if (f.touMaxAmount) tou.max_payment_amount = Number(f.touMaxAmount);
@@ -156,6 +181,34 @@ function buildConsent(f: FormState) {
 }
 
 function buildConfig(f: FormState) {
+  /* Drop-in：一次挂载，内部自带 Card / Apple Pay / Google Pay / 各地钱包 */
+  if (f.method === "dropIn") {
+    const c: any = {
+      intent_id: f.intentId.trim(),
+      client_secret: f.clientSecret.trim(),
+      currency: (f.currency || "USD").toUpperCase(),
+      countryCode: (f.countryCode || "US").toUpperCase(),
+      methods: [
+        { name: "card" },
+        { name: "applepay", countryCode: (f.countryCode || "US").toUpperCase() },
+        { name: "googlepay", countryCode: (f.countryCode || "US").toUpperCase() },
+      ],
+    };
+    if (f.customerId.trim()) c.customer_id = f.customerId.trim();
+    return c;
+  }
+
+  /* Card element：只渲染卡号 / 有效期 / CVC，需自行调 confirm() */
+  if (f.method === "card") {
+    const c: any = {
+      intent_id: f.intentId.trim(),
+      client_secret: f.clientSecret.trim(),
+    };
+    if (f.customerId.trim()) c.customer_id = f.customerId.trim();
+    return c;
+  }
+
+  /* Apple Pay element */
   const c: any = {
     amount: { value: f.amountValue, currency: (f.currency || "USD").toUpperCase() },
     countryCode: (f.countryCode || "US").toUpperCase(),
@@ -185,6 +238,25 @@ function buildConfig(f: FormState) {
   return c;
 }
 
+/* 卡支付时 confirm() 需要提交的账单信息 */
+function buildBilling(f: FormState) {
+  const b: any = {};
+  if (f.billFirstName.trim()) b.first_name = f.billFirstName.trim();
+  if (f.billLastName.trim()) b.last_name = f.billLastName.trim();
+  if (f.billEmail.trim()) b.email = f.billEmail.trim();
+  if (f.billPhone.trim()) b.phone_number = f.billPhone.trim();
+  if (f.billAddress.trim() || f.billCity.trim() || f.billCountry.trim()) {
+    b.address = {
+      country_code: (f.billCountry || f.countryCode || "US").toUpperCase(),
+      street: f.billAddress.trim() || undefined,
+      city: f.billCity.trim() || undefined,
+      postcode: f.billPostcode.trim() || undefined,
+      state: f.billState.trim() || undefined,
+    };
+  }
+  return b;
+}
+
 /* ────────── 组件 ────────── */
 export default function AirwallexDemoPage() {
   const [f, setF] = useState<FormState>(DEFAULTS);
@@ -192,6 +264,7 @@ export default function AirwallexDemoPage() {
   const [sdkReady, setSdkReady] = useState<"loading" | "ok" | "err">("loading");
   const [mounted, setMounted] = useState(false);
   const [restored, setRestored] = useState(false);
+  const [browserInfo, setBrowserInfo] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const elementRef = useRef<any>(null);
@@ -217,6 +290,7 @@ export default function AirwallexDemoPage() {
         });
       }
     } catch {}
+    setBrowserInfo(true);
     setRestored(true);
   }, []);
 
@@ -246,7 +320,7 @@ export default function AirwallexDemoPage() {
 
   /* ── 环境自检 ── */
   const diag = useMemo(() => {
-    if (typeof window === "undefined") return null;
+    if (!browserInfo) return null;
     const ua = navigator.userAgent;
     const isSafari = /^((?!chrome|android|crios|fxios|edg|opr).)*safari/i.test(ua);
     const hasSession = typeof window.ApplePaySession !== "undefined";
@@ -255,11 +329,11 @@ export default function AirwallexDemoPage() {
     const https = window.location.protocol === "https:" || window.location.hostname === "localhost";
     return [
       { ok: https, label: "HTTPS / localhost", detail: https ? window.location.origin : "Apple Pay 会拒绝非安全上下文" },
-      { ok: isSafari, label: "Safari 环境", detail: isSafari ? "是" : "非 Safari — 按钮不会渲染" },
+      { ok: isSafari, label: "Safari 环境", detail: isSafari ? "是" : "非 Safari — Apple Pay 按钮不会渲染（卡支付仍可用）" },
       { ok: hasSession, label: "ApplePaySession", detail: hasSession ? "可用" : "不存在" },
       { ok: !!canPay, label: "canMakePayments()", detail: String(canPay) },
     ];
-  }, [restored]);
+  }, [browserInfo]);
 
   /* ── 日志 ── */
   const pushLog = (level: LogLevel, msg: string, data?: unknown) => {
@@ -294,14 +368,14 @@ export default function AirwallexDemoPage() {
       amount: Number(f.amountValue) || 100,
       currency: (f.currency || "USD").toUpperCase(),
       merchant_order_id: "D" + new Date().toISOString().slice(0, 10).replace(/-/g, "") + "001",
-      return_url: typeof window !== "undefined" ? window.location.origin + "/airwallex-demo" : "https://example.com/return",
+      return_url: browserInfo ? window.location.origin + "/airwallex-demo" : "{{YOUR_RETURN_URL}}",
     };
     if (f.customerId.trim()) body.customer_id = f.customerId.trim();
     return `curl -X POST https://${host}/api/v1/pa/payment_intents/create \\
   -H 'Authorization: Bearer {{ACCESS_TOKEN}}' \\
   -H 'Content-Type: application/json' \\
   -d '${JSON.stringify(body)}'`;
-  }, [f.env, f.amountValue, f.currency, f.customerId]);
+  }, [f.env, f.amountValue, f.currency, f.customerId, browserInfo]);
 
   /* ── 后端 API 调用 ── */
   const [busy, setBusy] = useState<string | null>(null);
@@ -388,9 +462,8 @@ export default function AirwallexDemoPage() {
     if (!sdk) return pushLog("error", "SDK 尚未加载完成");
     if (lineItemsError) return pushLog("error", lineItemsError);
     if (!f.clientSecret.trim()) return pushLog("error", "client_secret 不能为空");
-    if (f.mode === "payment" && !f.intentId.trim())
-      return pushLog("error", "mode=payment 时 intent_id 必填");
-    if (f.mode === "recurring" && !f.customerId.trim())
+    if (!f.intentId.trim()) return pushLog("error", "intent_id 必填");
+    if (f.method === "applePay" && f.mode === "recurring" && !f.customerId.trim())
       return pushLog("error", "mode=recurring 时 customer_id 必填");
 
     try {
@@ -405,31 +478,66 @@ export default function AirwallexDemoPage() {
       pushLog("info", `init({ env: '${f.env}'${f.locale ? `, locale: '${f.locale}'` : ""} })`);
       await sdk.init(initOpts);
 
-      pushLog("info", "createElement('applePayButton', {…})", config);
-      const el = await sdk.createElement("applePayButton", config);
+      const elType = f.method;
+      pushLog("info", `createElement('${elType}', {…})`, config);
+      const el = await sdk.createElement(elType, config);
       if (!el) return pushLog("error", "createElement 返回 null，参数可能不合法或环境不支持");
 
-      el.on("ready",             ()  => pushLog("info", "event: ready"));
-      el.on("click",             ()  => pushLog("info", "event: click"));
-      el.on("validateMerchant",  (e: any) => pushLog("info", "event: validateMerchant", e?.detail));
-      el.on("authorized",        (e: any) => pushLog("info", "event: authorized", {
-        transactionIdentifier: e?.detail?.paymentData?.transactionIdentifier,
-        paymentMethod: e?.detail?.paymentData?.paymentMethod,
+      if (f.method === "applePay") {
+        el.on("ready",             ()  => pushLog("info", "event: ready"));
+        el.on("click",             ()  => pushLog("info", "event: click"));
+        el.on("validateMerchant",  (e: any) => pushLog("info", "event: validateMerchant", e?.detail));
+        el.on("authorized",        (e: any) => pushLog("info", "event: authorized", {
+          transactionIdentifier: e?.detail?.paymentData?.transactionIdentifier,
+          paymentMethod: e?.detail?.paymentData?.paymentMethod,
+        }));
+        el.on("shippingMethodChange",  (e: any) => pushLog("info", "event: shippingMethodChange", e?.detail));
+        el.on("shippingAddressChange", (e: any) => pushLog("info", "event: shippingAddressChange", e?.detail));
+        el.on("cancel",  ()          => pushLog("warn", "event: cancel — 用户取消"));
+      }
+
+      el.on("ready", () => pushLog("info", "event: ready"));
+      el.on("change", (e: any) => pushLog("info", "event: change", {
+        complete: e?.detail?.complete,
+        error: e?.detail?.error,
       }));
-      el.on("shippingMethodChange",  (e: any) => pushLog("info", "event: shippingMethodChange", e?.detail));
-      el.on("shippingAddressChange", (e: any) => pushLog("info", "event: shippingAddressChange", e?.detail));
-      el.on("cancel",  ()          => pushLog("warn", "event: cancel — 用户取消"));
-      el.on("success", (e: any)    => pushLog("success",
+      el.on("focus", (e: any) => pushLog("info", `event: focus — ${e?.detail?.field ?? e?.detail?.type ?? "?"}`));
+      el.on("blur",  (e: any) => pushLog("info", `event: blur — ${e?.detail?.field ?? e?.detail?.type ?? "?"}`));
+      el.on("success", (e: any) => pushLog("success",
         `event: success — intent.status=${e?.detail?.intent?.status ?? "?"}`, e?.detail));
-      el.on("error",   (e: any)    => pushLog("error",
+      el.on("error", (e: any) => pushLog("error",
         `event: error — ${e?.detail?.error?.code ?? "UNKNOWN"}`, e?.detail));
 
       el.mount(containerRef.current!);
       elementRef.current = el;
       setMounted(true);
-      pushLog("info", "element.mount() 完成");
+      pushLog("info", `element.mount() 完成（${elType}）`);
     } catch (e: any) {
       pushLog("error", "挂载失败：" + (e?.message || String(e)));
+    }
+  };
+
+  /* ── Card / Drop-in 提交支付 ── */
+  const confirmBtn = async () => {
+    if (!elementRef.current) return pushLog("error", "请先挂载组件");
+    try {
+      setBusy("confirm");
+      pushLog("info", "element.confirm({…}) …");
+
+      if (f.method === "card") {
+        const billing = buildBilling(f);
+        const opts: any = { payment_method: {} };
+        if (Object.keys(billing).length) opts.payment_method.billing = billing;
+        const intent = await elementRef.current.confirm(opts);
+        pushLog("success", `支付完成 — intent.status=${intent?.status ?? "?"}`, intent);
+      } else {
+        const intent = await elementRef.current.confirm();
+        pushLog("success", `支付完成 — intent.status=${intent?.status ?? "?"}`, intent);
+      }
+    } catch (e: any) {
+      pushLog("error", "confirm 失败：" + (e?.message || String(e)), e?.details ?? e?.error);
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -457,24 +565,64 @@ export default function AirwallexDemoPage() {
   };
 
   /* ═════════════ 渲染 ═════════════ */
+  const TABS = [
+    { id: "applePay", label: "Apple Pay", hint: "applePayButton element" },
+    { id: "dropIn",   label: "Drop-in",   hint: "卡 + Apple Pay + Google Pay 一体" },
+    { id: "card",     label: "Card",      hint: "纯卡号 / 有效期 / CVC" },
+  ] as const;
+
+  const switchMethod = (m: FormState["method"]) => {
+    if (elementRef.current) { try { elementRef.current.destroy(); } catch {} elementRef.current = null; }
+    if (containerRef.current) containerRef.current.innerHTML = "";
+    setMounted(false);
+    set("method", m);
+    pushLog("info", `切换到 ${m} 组件`);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* 顶栏 */}
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <div>
+        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <Link href="/" className="text-xs text-slate-500 hover:text-slate-800">← 回到 Simulator</Link>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight">Airwallex Apple Pay Element · Sandbox 测试台</h1>
+            <h1 className="mt-1 text-base font-semibold tracking-tight sm:text-xl">
+              Airwallex Payment Elements · Sandbox 测试台
+            </h1>
           </div>
-          <div className="flex items-center gap-3 text-xs">
+          <div className="flex shrink-0 items-center gap-3 text-xs">
             <SdkBadge status={sdkReady} />
+          </div>
+        </div>
+
+        {/* 支付方式 Tab */}
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="-mb-px flex gap-1 overflow-x-auto">
+            {TABS.map((t) => {
+              const active = f.method === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => switchMethod(t.id)}
+                  className={
+                    "shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors " +
+                    (active
+                      ? "border-slate-900 font-medium text-slate-900"
+                      : "border-transparent text-slate-500 hover:text-slate-800")
+                  }
+                  title={t.hint}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </header>
 
       <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* 左：表单 */}
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <Card title="Airwallex.js init">
             <Row>
               <Field label="env">
@@ -541,7 +689,8 @@ export default function AirwallexDemoPage() {
             </Row>
           </Card>
 
-          <Card title="金额与外观">
+          {f.method === "applePay" && (
+          <Card title="金额与外观（Apple Pay 专属）">
             <Row>
               <Field label="amount.value（字符串，与 intent 一致）">
                 <input className="input" value={f.amountValue} onChange={(e) => set("amountValue", e.target.value)} placeholder='"100"' />
@@ -587,7 +736,72 @@ export default function AirwallexDemoPage() {
               <Toggle label="existingPaymentMethodRequired" checked={f.existingPaymentMethodRequired} onChange={(v) => set("existingPaymentMethodRequired", v)} />
             </Row>
           </Card>
+          )}
 
+          {f.method !== "applePay" && (
+          <Card title="基础参数">
+            <Row>
+              <Field label="amount.value（仅用于创建 intent 时的参考值）">
+                <input className="input" value={f.amountValue} onChange={(e) => set("amountValue", e.target.value)} placeholder='"100"' />
+              </Field>
+              <Field label="currency">
+                <select className="input" value={f.currency} onChange={(e) => set("currency", e.target.value)}>
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label="countryCode（ISO2）">
+                <input className="input uppercase" maxLength={2} value={f.countryCode} onChange={(e) => set("countryCode", e.target.value.toUpperCase())} />
+              </Field>
+            </Row>
+            {f.method === "dropIn" && (
+              <p className="mt-2 text-xs text-slate-500">
+                挂载后会同时出现卡号输入框、Apple Pay 按钮、Google Pay 按钮 —— 具体显示哪些取决于你的 Airwallex 账户开通了哪些支付方式。
+              </p>
+            )}
+            {f.method === "card" && (
+              <p className="mt-2 text-xs text-slate-500">
+                只渲染卡号 / 有效期 / CVC。填完后点下方「提交支付」触发 confirm()。
+              </p>
+            )}
+          </Card>
+          )}
+
+          {(f.method === "card") && (
+          <Card title="账单信息（confirm 时提交）">
+            <Row>
+              <Field label="名 (first_name)">
+                <input className="input" value={f.billFirstName} onChange={(e) => set("billFirstName", e.target.value)} />
+              </Field>
+              <Field label="姓 (last_name)">
+                <input className="input" value={f.billLastName} onChange={(e) => set("billLastName", e.target.value)} />
+              </Field>
+              <Field label="邮箱">
+                <input className="input" value={f.billEmail} onChange={(e) => set("billEmail", e.target.value)} />
+              </Field>
+              <Field label="电话">
+                <input className="input" value={f.billPhone} onChange={(e) => set("billPhone", e.target.value)} />
+              </Field>
+              <Field label="街道地址">
+                <input className="input" value={f.billAddress} onChange={(e) => set("billAddress", e.target.value)} />
+              </Field>
+              <Field label="城市">
+                <input className="input" value={f.billCity} onChange={(e) => set("billCity", e.target.value)} />
+              </Field>
+              <Field label="州 / 省">
+                <input className="input" value={f.billState} onChange={(e) => set("billState", e.target.value)} />
+              </Field>
+              <Field label="邮编">
+                <input className="input" value={f.billPostcode} onChange={(e) => set("billPostcode", e.target.value)} />
+              </Field>
+              <Field label="国家代码">
+                <input className="input uppercase" maxLength={2} value={f.billCountry} onChange={(e) => set("billCountry", e.target.value.toUpperCase())} placeholder={f.countryCode} />
+              </Field>
+            </Row>
+          </Card>
+          )}
+
+          {f.method === "applePay" && (
+          <>
           <Card title="联系人字段">
             <div className="flex flex-wrap gap-3 text-sm">
               <Toggle label="Billing.postalAddress" checked={f.reqBilling} onChange={(v) => set("reqBilling", v)} />
@@ -638,18 +852,38 @@ export default function AirwallexDemoPage() {
               </>
             )}
           </Card>
+          </>
+          )}
         </div>
 
         {/* 右：预览 + 日志 + curl */}
-        <aside className="space-y-4">
-          <Card title="Apple Pay 按钮预览">
-            <div ref={containerRef} id="applePayButton" className="min-h-[52px] rounded-md border border-dashed border-slate-300 p-2" />
+        <aside className="min-w-0 space-y-4">
+          <Card title={
+            f.method === "applePay" ? "Apple Pay 按钮预览"
+            : f.method === "dropIn" ? "Drop-in 组件预览"
+            : "卡号输入组件预览"
+          }>
+            <div ref={containerRef} id="applePayButton" className="min-h-[52px] overflow-x-auto rounded-md border border-dashed border-slate-300 p-2" />
             <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={mountBtn} className="btn-primary">挂载 / 重新挂载</button>
+              {f.method !== "applePay" && (
+                <button onClick={confirmBtn} disabled={!mounted || busy === "confirm"} className="btn-primary">
+                  {busy === "confirm" ? "…" : "提交支付 confirm()"}
+                </button>
+              )}
               <button onClick={unmountBtn} disabled={!mounted} className="btn">unmount</button>
               <button onClick={destroyBtn} disabled={!mounted} className="btn">destroy</button>
             </div>
-            <p className="mt-2 text-xs text-slate-500">按钮只在 Safari + HTTPS/localhost + 域名已注册 + 支持地区显示。</p>
+            {f.method === "applePay" && (
+              <p className="mt-2 text-xs text-slate-500">
+                按钮只在 Safari + HTTPS + 域名已注册 + 支持地区显示。其他浏览器请切到 Drop-in 或 Card 标签测卡支付。
+              </p>
+            )}
+            {f.method === "dropIn" && (
+              <p className="mt-2 text-xs text-slate-500">
+                卡号部分在 Chrome / Safari 都能渲染。Apple Pay / Google Pay 取决于浏览器与地区。
+              </p>
+            )}
           </Card>
 
           <Card title="环境自检">
@@ -703,9 +937,8 @@ export default function AirwallexDemoPage() {
                 onClick={() => copyText("cfg", JSON.stringify(config, null, 2))}
                 className="text-xs text-slate-500 hover:text-slate-800"
               >{copiedKey === "cfg" ? "已复制" : "复制"}</button>
-            </div>
-            <pre className="mt-2 max-h-64 overflow-auto rounded bg-slate-900 p-3 text-[11px] leading-4 text-slate-100">
-{JSON.stringify(config, null, 2)}
+            </div>            <pre className="mt-2 max-h-64 overflow-auto rounded bg-slate-900 p-3 text-[11px] leading-4 text-slate-100">
+{browserInfo ? JSON.stringify(config, null, 2) : "…"}
             </pre>
           </Card>
         </aside>
