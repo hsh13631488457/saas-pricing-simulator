@@ -19,11 +19,14 @@ export async function POST(req: NextRequest) {
   const commodityId = String(body?.commodityId ?? "").trim();
   const payScene = String(body?.payScene ?? "website").trim();
   const transferParameter = String(body?.transferParameter ?? "").trim();
+  const appKey = String(body?.appKey ?? "").trim();
+  const appSecret = String(body?.appSecret ?? "").trim();
 
+  if (!appKey || !appSecret) return jsonError(400, "appKey 和 appSecret 必填");
   if (!deviceId) return jsonError(400, "deviceId 必填");
   if (!commodityId) return jsonError(400, "commodityId 必填");
 
-  const auth = await getAccessToken();
+  const auth = await getAccessToken({ appKey, appSecret });
   if (!auth.ok || !auth.token) {
     return jsonError(502, auth.error ?? "获取 access-token 失败", auth.detail);
   }
@@ -70,7 +73,12 @@ export async function POST(req: NextRequest) {
         _debug: {
           upstreamStatus: res.status,
           traceId: data?.traceId ?? res.headers.get("traceid") ?? null,
-          requestSent: { payload, authorization, tokenCached: auth.cached },
+          requestSent: {
+            payload,
+            authorization,
+            tokenCached: auth.cached,
+            appKey: appKey.slice(0, 4) + "…",
+          },
         },
       }
     : data;

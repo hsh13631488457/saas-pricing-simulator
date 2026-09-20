@@ -1,14 +1,11 @@
 /**
  * 天枢（TianShu）后端服务接入
  *
- * 固定使用测试环境。App Key / App Secret 只存在于服务端，不进前端 bundle。
+ * 固定使用测试环境。appKey / appSecret 由调用方从前端表单传入，
+ * 不在代码或环境变量里保存。
  */
 
 export const TIANSHU_BASE = "https://open-test.ibestfanli.com";
-
-/** 固定的应用凭证（仅服务端使用） */
-const APP_KEY = "ef7omo9wa6nmsvvn";
-const APP_SECRET = "nhatntjmubbnk98p";
 
 /** 固定的 Authorization 参数 */
 const PRD_ID = "99999962";
@@ -31,9 +28,10 @@ interface TokenCache {
   fetchedAt: number;
 }
 
-let tokenCache: TokenCache | null = null;
-/** 并发锁：同一时刻只允许一次刷新在飞 */
-let inflight: Promise<TokenResult> | null = null;
+/** 按 appKey 分别缓存，避免不同凭证之间串用 token */
+const tokenCache = new Map<string, TokenCache>();
+/** 并发锁：同一 appKey 同一时刻只允许一次刷新在飞 */
+const inflight = new Map<string, Promise<TokenResult>>();
 
 export interface TokenResult {
   ok: boolean;
@@ -45,6 +43,11 @@ export interface TokenResult {
   cached?: boolean;
 }
 
+export interface AppCreds {
+  appKey: string;
+  appSecret: string;
+}
+
 /**
  * 刷新 / 获取 access-token。
  *
@@ -53,21 +56,24 @@ export interface TokenResult {
  *  - 两次刷新间隔 < 1 分钟会返回同一个 token，因此这里直接复用缓存，不重复请求
  *  - 并发调用共享同一次刷新（in-flight 锁）
  */
-export async function getAccessToken(force = false): Promise<TokenResult> {
+export async function getAccessToken(creds: AppCreds, force = false): Promise<TokenResult> {
   const now = Date.now();
+  const { appKey, appSecret } = creds;
 
-  if (!force && tokenCache && now < tokenCache.expiresAt) {
-    return { ok: true, token: tokenCache.token, expiresAt: tokenCache.expiresAt, cached: true };
+  const cached = tokenCache.get(appKey);
+  if (!force && cached && now < cached.expiresAt) {
+    return { ok: true, token: cached.token, expiresAt: cached.expiresAt, cached: true };
   }
 
-  if (inflight) return inflight;
+  const pending = inflight.get(appKey);
+  if (pending) return pending;
 
-  inflight = (async (): Promise<TokenResult> => {
+  const task = (async (): Promise<TokenResult> => {
     try {
       const res = await fetch(`${TIANSHU_BASE}/overseas_developer_service/refreshAccessToken`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appKey: APP_KEY, appSecret: APP_SECRET }),
+        body: JSON.stringify({ appKey, appSecret }),
         cache: "no-store",
       });
 
@@ -84,21 +90,22 @@ export async function getAccessToken(force = false): Promise<TokenResult> {
       }
 
       const expiresAt = Number(data.data.expiresIn) || now + 24 * 3600 * 1000;
-      tokenCache = {
+      tokenCache.set(appKey, {
         token: data.data.accessToken,
         expiresAt,
         fetchedAt: now,
-      };
+      });
 
-      return { ok: true, token: tokenCache.token, expiresAt, cached: false };
+      return { ok: true, token: data.data.accessToken, expiresAt, cached: false };
     } catch (e: any) {
       return { ok: false, error: `请求天枢失败：${e?.message ?? String(e)}` };
     } finally {
-      inflight = null;
+      inflight.delete(appKey);
     }
   })();
 
-  return inflight;
+  inflight.set(appKey, task);
+  return task;
 }
 
 /* ────────── Authorization 头 ────────── */

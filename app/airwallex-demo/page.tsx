@@ -21,7 +21,7 @@ const BUTTON_TYPES = [
 const CURRENCIES = ["USD", "HKD", "CNY", "SGD", "AUD", "GBP", "EUR", "JPY", "NZD", "CAD"];
 
 const STORAGE_KEY = "awx-applepay-demo-v2";
-const SKIP_PERSIST = new Set(["clientSecret", "apiKey"]);
+const SKIP_PERSIST = new Set(["clientSecret", "apiKey", "tsAppSecret"]);
 
 const DEFAULT_LINE_ITEMS = JSON.stringify(
   [
@@ -95,6 +95,8 @@ interface FormState {
   billCountry: string;
   /* 天枢后端下单 */
   source: "airwallex" | "tianshu";
+  tsAppKey: string;
+  tsAppSecret: string;
   tsDeviceId: string;
   tsCommodityId: string;
   tsPayScene: string;
@@ -155,6 +157,8 @@ const DEFAULTS: FormState = {
   billPostcode: "",
   billCountry: "",
   source: "airwallex",
+  tsAppKey: "",
+  tsAppSecret: "",
   tsDeviceId: "",
   tsCommodityId: "",
   tsPayScene: "website",
@@ -468,10 +472,20 @@ export default function AirwallexDemoPage() {
   };
 
   /* ── 天枢后端：刷新 token / 下单 ── */
+  const tsCredsError = () =>
+    !f.tsAppKey.trim() || !f.tsAppSecret.trim()
+      ? "App Key 和 App Secret 必填"
+      : null;
+
   const tianshuToken = async () => {
+    const credErr = tsCredsError();
+    if (credErr) return pushLog("error", credErr);
     setBusy("ts-token");
     pushLog("info", "POST /api/tianshu/refresh-token …");
-    const r = await callApi("/api/tianshu/refresh-token", {});
+    const r = await callApi("/api/tianshu/refresh-token", {
+      appKey: f.tsAppKey.trim(),
+      appSecret: f.tsAppSecret.trim(),
+    });
     setBusy(null);
     if (!r.ok) return pushLog("error", `刷新 token 失败 (${r.status})`, r.data);
     pushLog("success",
@@ -480,11 +494,15 @@ export default function AirwallexDemoPage() {
   };
 
   const tianshuCreateOrder = async () => {
+    const credErr = tsCredsError();
+    if (credErr) return pushLog("error", credErr);
     if (!f.tsDeviceId.trim()) return pushLog("error", "设备 ID 必填");
     if (!f.tsCommodityId.trim()) return pushLog("error", "商品 ID (commodityId) 必填");
     setBusy("ts-order");
     pushLog("info", "POST /api/tianshu/create-order …");
     const r = await callApi("/api/tianshu/create-order", {
+      appKey: f.tsAppKey.trim(),
+      appSecret: f.tsAppSecret.trim(),
       deviceId: f.tsDeviceId.trim(),
       commodityId: f.tsCommodityId.trim(),
       payScene: f.tsPayScene,
@@ -706,12 +724,24 @@ export default function AirwallexDemoPage() {
             <p className="mt-2 text-xs text-slate-500">
               {f.source === "airwallex"
                 ? "当前：用下方「服务端凭证」区块的 Client ID / API Key 调 /api/awx/* 建单。"
-                : "当前：调 /api/tianshu/create-order 建单，App Key / Secret 固定在服务端，页面无需填写 Airwallex 凭证。"}
+                : "当前：调 /api/tianshu/create-order 建单，App Key / Secret 在下方填写，不会写进代码或本地存储。"}
             </p>
           </Card>
 
           {f.source === "tianshu" && (
           <Card title="天枢后端下单（测试环境）">
+            <Row>
+              <Field label="App Key">
+                <input className="input font-mono" value={f.tsAppKey}
+                  onChange={(e) => set("tsAppKey", e.target.value)}
+                  placeholder="ef7o…" autoComplete="off" spellCheck={false} />
+              </Field>
+              <Field label="App Secret（不写入本地存储）">
+                <input className="input font-mono" type="password" value={f.tsAppSecret}
+                  onChange={(e) => set("tsAppSecret", e.target.value)}
+                  placeholder="•••" autoComplete="off" spellCheck={false} />
+              </Field>
+            </Row>
             <Row>
               <Field label="设备 ID（deviceId）">
                 <input className="input font-mono" value={f.tsDeviceId}

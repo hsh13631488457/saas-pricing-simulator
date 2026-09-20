@@ -1,31 +1,25 @@
 import { NextRequest } from "next/server";
-import { getAccessToken, clientIpFromHeaders } from "../_lib";
+import { getAccessToken, jsonError } from "../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(_req: NextRequest) {
-  return handle(_req);
-}
+export async function POST(req: NextRequest) {
+  let body: any;
+  try { body = await req.json(); } catch { return jsonError(400, "Invalid JSON body"); }
 
-export async function GET(req: NextRequest) {
-  return handle(req);
-}
+  const appKey = String(body?.appKey ?? "").trim();
+  const appSecret = String(body?.appSecret ?? "").trim();
+  if (!appKey || !appSecret) return jsonError(400, "appKey 和 appSecret 必填");
 
-async function handle(_req: NextRequest) {
-  const r = await getAccessToken();
+  const r = await getAccessToken({ appKey, appSecret });
   if (!r.ok) {
-    return new Response(
-      JSON.stringify({ error: r.error, detail: r.detail }),
-      { status: 502, headers: { "Content-Type": "application/json" } },
-    );
+    return jsonError(502, r.error ?? "刷新 token 失败", r.detail);
   }
-  return new Response(
-    JSON.stringify({
-      accessToken: r.token,
-      expiresAt: r.expiresAt,
-      cached: r.cached,
-    }),
-    { status: 200, headers: { "Content-Type": "application/json" } },
-  );
+
+  return Response.json({
+    accessToken: r.token,
+    expiresAt: r.expiresAt,
+    cached: r.cached,
+  });
 }
