@@ -9,6 +9,23 @@ const nextConfig = {
           { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
         ],
       },
+      {
+        source: "/airwallex-demo",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.airwallex.com https://o.alicdn.com",
+              "style-src 'self' 'unsafe-inline' https://static.airwallex.com",
+              "img-src 'self' data: https://static.airwallex.com",
+              "connect-src 'self' https://api.sandbox.airwallex.com https://threeds.airwallex.com https://pci-api.airwallex.com",
+              "frame-src 'self' https://threeds.airwallex.com https://pci-api.airwallex.com",
+              "font-src 'self' data:",
+            ].join("; "),
+          },
+        ],
+      },
     ];
   },
 };
