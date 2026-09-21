@@ -83,16 +83,6 @@ interface FormState {
   touTotalCycles: string;
   lineItemsEnabled: boolean;
   lineItemsJson: string;
-  /* 卡支付账单信息 */
-  billFirstName: string;
-  billLastName: string;
-  billEmail: string;
-  billPhone: string;
-  billAddress: string;
-  billCity: string;
-  billState: string;
-  billPostcode: string;
-  billCountry: string;
   /* 天枢后端下单 */
   source: "airwallex" | "tianshu";
   tsAppKey: string;
@@ -147,15 +137,6 @@ const DEFAULTS: FormState = {
   touTotalCycles: "",
   lineItemsEnabled: false,
   lineItemsJson: DEFAULT_LINE_ITEMS,
-  billFirstName: "",
-  billLastName: "",
-  billEmail: "",
-  billPhone: "",
-  billAddress: "",
-  billCity: "",
-  billState: "",
-  billPostcode: "",
-  billCountry: "",
   source: "airwallex",
   tsAppKey: "",
   tsAppSecret: "",
@@ -212,12 +193,12 @@ function buildConfig(f: FormState) {
     if (f.customerId.trim()) c.customer_id = f.customerId.trim();
     return c;
   }
-
   /* Card element：只渲染卡号 / 有效期 / CVC，需自行调 confirm() */
   if (f.method === "card") {
     const c: any = {
       intent_id: f.intentId.trim(),
       client_secret: f.clientSecret.trim(),
+      currency: (f.currency || "USD").toUpperCase(),
     };
     if (f.customerId.trim()) c.customer_id = f.customerId.trim();
     return c;
@@ -251,25 +232,6 @@ function buildConfig(f: FormState) {
     try { c.lineItems = JSON.parse(f.lineItemsJson); } catch { /* err shown in UI */ }
   }
   return c;
-}
-
-/* 卡支付时 confirm() 需要提交的账单信息 */
-function buildBilling(f: FormState) {
-  const b: any = {};
-  if (f.billFirstName.trim()) b.first_name = f.billFirstName.trim();
-  if (f.billLastName.trim()) b.last_name = f.billLastName.trim();
-  if (f.billEmail.trim()) b.email = f.billEmail.trim();
-  if (f.billPhone.trim()) b.phone_number = f.billPhone.trim();
-  if (f.billAddress.trim() || f.billCity.trim() || f.billCountry.trim()) {
-    b.address = {
-      country_code: (f.billCountry || f.countryCode || "US").toUpperCase(),
-      street: f.billAddress.trim() || undefined,
-      city: f.billCity.trim() || undefined,
-      postcode: f.billPostcode.trim() || undefined,
-      state: f.billState.trim() || undefined,
-    };
-  }
-  return b;
 }
 
 /* ────────── 组件 ────────── */
@@ -601,16 +563,18 @@ export default function AirwallexDemoPage() {
       setBusy("confirm");
       pushLog("info", "element.confirm({…}) …");
 
-      if (f.method === "card") {
-        const billing = buildBilling(f);
-        const opts: any = { payment_method: {} };
-        if (Object.keys(billing).length) opts.payment_method.billing = billing;
-        const intent = await elementRef.current.confirm(opts);
-        pushLog("success", `支付完成 — intent.status=${intent?.status ?? "?"}`, intent);
-      } else {
-        const intent = await elementRef.current.confirm();
-        pushLog("success", `支付完成 — intent.status=${intent?.status ?? "?"}`, intent);
-      }
+      // 官方 Card element 的 confirm 只接受 intent_id / client_secret
+      const opts = {
+        intent_id: f.intentId.trim(),
+        client_secret: f.clientSecret.trim(),
+      };
+
+      // 超时保护：卡住时给出明确提示，而不是无限等待
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("confirm() 超过 60 秒未返回，可能是 3DS 弹窗被拦截，或网络请求被拒")), 60000)
+      );
+      const intent: any = await Promise.race([elementRef.current.confirm(opts), timeout]);
+      pushLog("success", `支付完成 — intent.status=${intent?.status ?? "?"}`, intent);
     } catch (e: any) {
       pushLog("error", "confirm 失败：" + (e?.message || String(e)), e?.details ?? e?.error);
     } finally {
@@ -924,40 +888,6 @@ export default function AirwallexDemoPage() {
                 只渲染卡号 / 有效期 / CVC。填完后点下方「提交支付」触发 confirm()。
               </p>
             )}
-          </Card>
-          )}
-
-          {(f.method === "card") && (
-          <Card title="账单信息（confirm 时提交）">
-            <Row>
-              <Field label="名 (first_name)">
-                <input className="input" value={f.billFirstName} onChange={(e) => set("billFirstName", e.target.value)} />
-              </Field>
-              <Field label="姓 (last_name)">
-                <input className="input" value={f.billLastName} onChange={(e) => set("billLastName", e.target.value)} />
-              </Field>
-              <Field label="邮箱">
-                <input className="input" value={f.billEmail} onChange={(e) => set("billEmail", e.target.value)} />
-              </Field>
-              <Field label="电话">
-                <input className="input" value={f.billPhone} onChange={(e) => set("billPhone", e.target.value)} />
-              </Field>
-              <Field label="街道地址">
-                <input className="input" value={f.billAddress} onChange={(e) => set("billAddress", e.target.value)} />
-              </Field>
-              <Field label="城市">
-                <input className="input" value={f.billCity} onChange={(e) => set("billCity", e.target.value)} />
-              </Field>
-              <Field label="州 / 省">
-                <input className="input" value={f.billState} onChange={(e) => set("billState", e.target.value)} />
-              </Field>
-              <Field label="邮编">
-                <input className="input" value={f.billPostcode} onChange={(e) => set("billPostcode", e.target.value)} />
-              </Field>
-              <Field label="国家代码">
-                <input className="input uppercase" maxLength={2} value={f.billCountry} onChange={(e) => set("billCountry", e.target.value.toUpperCase())} placeholder={f.countryCode} />
-              </Field>
-            </Row>
           </Card>
           )}
 
