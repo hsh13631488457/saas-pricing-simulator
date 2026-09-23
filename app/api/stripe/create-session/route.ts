@@ -27,6 +27,9 @@ export async function POST(req: NextRequest) {
   const locale = String(body?.locale ?? "").trim();
   const interval = String(body?.interval ?? "month").trim();
   const intervalCount = Number(body?.intervalCount) > 0 ? Number(body.intervalCount) : 1;
+  const paymentMethodTypes: string[] = Array.isArray(body?.paymentMethodTypes)
+    ? body.paymentMethodTypes.map((s: any) => String(s)).filter(Boolean)
+    : [];
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return jsonError(400, "amount 必须是正数（最小货币单位，如 1000 表示 $10.00）");
@@ -51,6 +54,8 @@ export async function POST(req: NextRequest) {
   if (customerEmail) payload.customer_email = customerEmail;
   if (locale) payload.locale = locale;
   if (mode === "payment") payload.customer_creation = "always";
+  // card 类型会自动启用 Apple Pay / Google Pay（Express Checkout Element 依赖它）
+  if (paymentMethodTypes.length) payload.payment_method_types = paymentMethodTypes;
 
   const r = await stripeRequest(secretKey, "/checkout/sessions", "POST", payload);
   if (!r.ok || !r.data?.client_secret) {

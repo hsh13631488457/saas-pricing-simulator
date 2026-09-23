@@ -40,7 +40,7 @@ const DEFAULT_LINE_ITEMS = JSON.stringify(
 
 /* ────────── 表单默认值 ────────── */
 interface FormState {
-  method: "applePay" | "dropIn" | "card";
+  method: "applePay" | "dropIn" | "card" | "link";
   env: "demo" | "sandbox" | "prod";
   mode: "payment" | "recurring";
   locale: string;
@@ -177,6 +177,27 @@ function buildConsent(f: FormState) {
 }
 
 function buildConfig(f: FormState) {
+  /* Link 式布局：Apple Pay 按钮 + split card 三个字段，由页面自行排版 */
+  if (f.method === "link") {
+    return {
+      _layout: "Apple Pay 按钮挂 applePayButton，卡号/有效期/CVC 分别挂 cardNumber/expiry/cvc",
+      applePay: {
+        amount: { value: f.amountValue, currency: (f.currency || "USD").toUpperCase() },
+        countryCode: (f.countryCode || "US").toUpperCase(),
+        totalPriceLabel: f.totalPriceLabel,
+        buttonType: f.buttonType,
+        buttonColor: f.buttonColor,
+      },
+      cardNumber: {
+        intent_id: f.intentId.trim(),
+        client_secret: f.clientSecret.trim(),
+        currency: (f.currency || "USD").toUpperCase(),
+      },
+      expiry: {},
+      cvc: {},
+    };
+  }
+
   /* Drop-in：一次挂载，内部自带 Card / Apple Pay / Google Pay / 各地钱包 */
   if (f.method === "dropIn") {
     const c: any = {
@@ -246,6 +267,8 @@ export default function AirwallexDemoPage() {
 
   const elementRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  /* Link 式布局：split card 的三个独立元素 + Apple Pay 按钮 */
+  const splitRefs = useRef<{ applePay?: any; cardNumber?: any; expiry?: any; cvc?: any }>({});
   const logIdRef = useRef(1);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
@@ -496,6 +519,27 @@ export default function AirwallexDemoPage() {
   };
 
   /* ── 挂载 ── */
+  const $ref = (id: string) => document.getElementById(id) as HTMLElement | null;
+
+  /** 销毁所有已挂载的元素（单元素模式和 Link 模式的都覆盖） */
+  const destroyAll = () => {
+    if (elementRef.current) {
+      try { elementRef.current.destroy(); } catch {}
+      elementRef.current = null;
+    }
+    Object.values(splitRefs.current).forEach((el: any) => {
+      if (!el) return;
+      try { el.destroy(); } catch {}
+    });
+    splitRefs.current = {};
+    if (containerRef.current) containerRef.current.innerHTML = "";
+    ["link-cardnumber", "link-expiry", "link-cvc", "link-applepay"].forEach((id) => {
+      const node = document.getElementById(id);
+      if (node) node.innerHTML = "";
+    });
+    setMounted(false);
+  };
+
   const mountBtn = async () => {
     const sdk = window.AirwallexComponentsSDK;
     if (!sdk) return pushLog("error", "SDK 尚未加载完成");
@@ -506,16 +550,55 @@ export default function AirwallexDemoPage() {
       return pushLog("error", "mode=recurring 时 customer_id 必填");
 
     try {
-      if (elementRef.current) {
-        try { elementRef.current.destroy(); } catch {}
-        elementRef.current = null;
-      }
-      if (containerRef.current) containerRef.current.innerHTML = "";
+      destroyAll();
 
       const initOpts: any = { env: f.env, enabledElements: ["payments"] };
       if (f.locale.trim()) initOpts.locale = f.locale.trim();
       pushLog("info", `init({ env: '${f.env}'${f.locale ? `, locale: '${f.locale}'` : ""} })`);
       await sdk.init(initOpts);
+
+      /* ── Link 式布局：Apple Pay + split card 三个字段，各自挂载 ── */
+      if (f.method === "link") {
+        const cfg = config as any;
+
+        pushLog("info", "createElement('applePayButton') → mount('#link-applepay')", cfg.applePay);
+        const ap = await sdk.createElement("applePayButton", cfg.applePay);
+        ap.on("ready", () => pushLog("info", "applePay: ready"));
+        ap.on("click", () => pushLog("info", "applePay: click"));
+        ap.on("validateMerchant", (e: any) => pushLog("info", "applePay: validateMerchant", e?.detail));
+        ap.on("cancel", () => pushLog("warn", "applePay: cancel"));
+        ap.on("success", (e: any) => pushLog("success", "applePay: success", e?.detail));
+        ap.on("error", (e: any) => pushLog("error", `applePay: error — ${e?.detail?.error?.code ?? "?"}`, e?.detail));
+        ap.mount($ref("link-applepay")!);
+        splitRefs.current.applePay = ap;
+
+        pushLog("info", "createElement('cardNumber') → mount('#link-cardnumber')", cfg.cardNumber);
+        const cn = await sdk.createElement("cardNumber", cfg.cardNumber);
+        cn.on("ready", () => pushLog("info", "cardNumber: ready"));
+        cn.on("change", (e: any) => pushLog("info", "cardNumber: change", e?.detail));
+        cn.on("focus", () => pushLog("info", "cardNumber: focus"));
+        cn.on("blur", () => pushLog("info", "cardNumber: blur"));
+        cn.mount($ref("link-cardnumber")!);
+        splitRefs.current.cardNumber = cn;
+
+        pushLog("info", "createElement('expiry') → mount('#link-expiry')");
+        const ex = await sdk.createElement("expiry");
+        ex.on("ready", () => pushLog("info", "expiry: ready"));
+        ex.on("change", (e: any) => pushLog("info", "expiry: change", e?.detail));
+        ex.mount($ref("link-expiry")!);
+        splitRefs.current.expiry = ex;
+
+        pushLog("info", "createElement('cvc') → mount('#link-cvc')");
+        const cv = await sdk.createElement("cvc");
+        cv.on("ready", () => pushLog("info", "cvc: ready"));
+        cv.on("change", (e: any) => pushLog("info", "cvc: change", e?.detail));
+        cv.mount($ref("link-cvc")!);
+        splitRefs.current.cvc = cv;
+
+        setMounted(true);
+        pushLog("success", "Link 式布局已挂载（Apple Pay + 卡号/有效期/CVC）");
+        return;
+      }
 
       const elType = f.method === "applePay" ? "applePayButton" : f.method;
       pushLog("info", `createElement('${elType}', {…})`, config);
@@ -556,14 +639,17 @@ export default function AirwallexDemoPage() {
     }
   };
 
-  /* ── Card / Drop-in 提交支付 ── */
+  /* ── Card / Drop-in / Link 提交支付 ── */
   const confirmBtn = async () => {
-    if (!elementRef.current) return pushLog("error", "请先挂载组件");
+    // Link 模式下 confirm 挂在 cardNumber 元素上，它会汇总其余两个字段
+    const target = f.method === "link" ? splitRefs.current.cardNumber : elementRef.current;
+    if (!target) return pushLog("error", "请先挂载组件");
+
     try {
       setBusy("confirm");
-      pushLog("info", "element.confirm({…}) …");
+      pushLog("info", f.method === "link" ? "cardNumber.confirm({…}) …" : "element.confirm({…}) …");
 
-      // 官方 Card element 的 confirm 只接受 intent_id / client_secret
+      // 官方 Card / Split card 的 confirm 只接受 intent_id / client_secret
       const opts = {
         intent_id: f.intentId.trim(),
         client_secret: f.clientSecret.trim(),
@@ -573,7 +659,7 @@ export default function AirwallexDemoPage() {
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("confirm() 超过 60 秒未返回，可能是 3DS 弹窗被拦截，或网络请求被拒")), 60000)
       );
-      const intent: any = await Promise.race([elementRef.current.confirm(opts), timeout]);
+      const intent: any = await Promise.race([target.confirm(opts), timeout]);
       pushLog("success", `支付完成 — intent.status=${intent?.status ?? "?"}`, intent);
     } catch (e: any) {
       pushLog("error", "confirm 失败：" + (e?.message || String(e)), e?.details ?? e?.error);
@@ -583,12 +669,25 @@ export default function AirwallexDemoPage() {
   };
 
   const unmountBtn = () => {
+    if (f.method === "link") {
+      Object.values(splitRefs.current).forEach((el: any) => {
+        try { el?.unmount(); } catch {}
+      });
+      pushLog("info", "所有 split 元素 unmount() 已调用");
+      return;
+    }
     if (!elementRef.current) return;
     try { elementRef.current.unmount(); pushLog("info", "element.unmount() 已调用"); }
     catch (e: any) { pushLog("error", "unmount 失败：" + e.message); }
   };
 
   const destroyBtn = () => {
+    if (f.method === "link") {
+      if (!Object.keys(splitRefs.current).length) return;
+      destroyAll();
+      pushLog("info", "所有 split 元素 destroy() 已调用");
+      return;
+    }
     if (!elementRef.current) return;
     try { elementRef.current.destroy(); } catch {}
     elementRef.current = null;
@@ -610,12 +709,11 @@ export default function AirwallexDemoPage() {
     { id: "applePay", label: "Apple Pay", hint: "applePayButton element" },
     { id: "dropIn",   label: "Drop-in",   hint: "卡 + Apple Pay + Google Pay 一体" },
     { id: "card",     label: "Card",      hint: "纯卡号 / 有效期 / CVC" },
+    { id: "link",     label: "Link 式布局", hint: "Apple Pay 在上、卡号表单在下的自拼布局" },
   ] as const;
 
   const switchMethod = (m: FormState["method"]) => {
-    if (elementRef.current) { try { elementRef.current.destroy(); } catch {} elementRef.current = null; }
-    if (containerRef.current) containerRef.current.innerHTML = "";
-    setMounted(false);
+    destroyAll();
     set("method", m);
     pushLog("info", `切换到 ${m} 组件`);
   };
@@ -888,6 +986,13 @@ export default function AirwallexDemoPage() {
                 只渲染卡号 / 有效期 / CVC。填完后点下方「提交支付」触发 confirm()。
               </p>
             )}
+            {f.method === "link" && (
+              <p className="mt-2 text-xs text-slate-500">
+                自拼布局：Apple Pay 按钮（applePayButton）+ 卡号 / 有效期 / CVC 三个独立元素
+                （cardNumber / expiry / cvc），每个都挂进你自己的 DOM，位置样式完全可控。
+                confirm() 挂在 cardNumber 上，它会汇总另外两个字段。
+              </p>
+            )}
           </Card>
           )}
 
@@ -950,11 +1055,44 @@ export default function AirwallexDemoPage() {
         {/* 右：预览 + 日志 + curl */}
         <aside className="min-w-0 space-y-4">
           <Card title={
-            f.method === "applePay" ? "Apple Pay 按钮预览"
+            f.method === "link" ? "Link 式布局预览"
+            : f.method === "applePay" ? "Apple Pay 按钮预览"
             : f.method === "dropIn" ? "Drop-in 组件预览"
             : "卡号输入组件预览"
           }>
-            <div ref={containerRef} id="applePayButton" className="min-h-[52px] overflow-x-auto rounded-md border border-dashed border-slate-300 p-2" />
+            {f.method === "link" ? (
+              /* Link 式布局：Apple Pay 在上，卡号表单在下，全部由自己的 DOM 控制 */
+              <div className="mx-auto max-w-sm space-y-3 rounded-lg border border-slate-200 p-4">
+                <div>
+                  <div id="link-applepay" className="min-h-[48px]" />
+                </div>
+
+                <div className="relative flex items-center py-1">
+                  <div className="flex-1 border-t border-slate-200" />
+                  <span className="px-3 text-xs text-slate-400">或使用银行卡</span>
+                  <div className="flex-1 border-t border-slate-200" />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs text-slate-600">卡号</label>
+                  <div id="link-cardnumber" className="min-h-[40px] rounded-md border border-slate-300 bg-white p-1" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-600">有效期</label>
+                    <div id="link-expiry" className="min-h-[40px] rounded-md border border-slate-300 bg-white p-1" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-600">CVC</label>
+                    <div id="link-cvc" className="min-h-[40px] rounded-md border border-slate-300 bg-white p-1" />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div ref={containerRef} id="applePayButton" className="min-h-[52px] overflow-x-auto rounded-md border border-dashed border-slate-300 p-2" />
+            )}
+
             <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={mountBtn} className="btn-primary">挂载 / 重新挂载</button>
               {f.method !== "applePay" && (

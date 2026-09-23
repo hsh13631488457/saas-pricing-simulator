@@ -7,6 +7,12 @@
 
 export const STRIPE_API = "https://api.stripe.com/v1";
 
+/**
+ * `ui_mode: "elements"`（Checkout Sessions + Elements）需要这个 API 版本，
+ * 否则 Stripe 会报 "Invalid ui_mode: elements"。
+ */
+export const STRIPE_API_VERSION = "2026-03-25.dahlia";
+
 /** Stripe 的 REST API 用 form-urlencoded，不是 JSON */
 export function formEncode(obj: Record<string, any>, prefix = ""): string {
   const parts: string[] = [];
@@ -40,6 +46,7 @@ export async function stripeRequest(
     method,
     headers: {
       Authorization: `Bearer ${secretKey}`,
+      "Stripe-Version": STRIPE_API_VERSION,
       ...(body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
     },
     ...(body ? { body: formEncode(body) } : {}),

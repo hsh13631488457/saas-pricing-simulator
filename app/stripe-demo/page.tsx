@@ -10,7 +10,7 @@ declare global {
 }
 
 const STORAGE_KEY = "stripe-demo-v1";
-const SKIP_PERSIST = new Set(["secretKey"]);
+const SKIP_PERSIST = new Set(["secretKey", "tsAppSecret"]);
 
 const CURRENCIES = ["usd", "hkd", "cny", "sgd", "aud", "gbp", "eur", "jpy", "nzd", "cad"];
 
@@ -31,6 +31,19 @@ interface FormState {
   locale: string;
   returnUrl: string;
   redirectIfRequired: boolean;
+  /* 组件与支付方式 */
+  showExpressCheckout: boolean;
+  showPaymentElement: boolean;
+  pmCard: boolean;
+  pmLink: boolean;
+  pmPaypal: boolean;
+  /* 订单来源 */
+  source: "stripe" | "tianshu";
+  tsAppKey: string;
+  tsAppSecret: string;
+  tsDeviceId: string;
+  tsCommodityId: string;
+  tsPayScene: string;
 }
 
 const DEFAULTS: FormState = {
@@ -47,6 +60,17 @@ const DEFAULTS: FormState = {
   locale: "",
   returnUrl: "",
   redirectIfRequired: true,
+  showExpressCheckout: true,
+  showPaymentElement: true,
+  pmCard: true,
+  pmLink: false,
+  pmPaypal: false,
+  source: "stripe",
+  tsAppKey: "",
+  tsAppSecret: "",
+  tsDeviceId: "",
+  tsCommodityId: "",
+  tsPayScene: "website",
 };
 
 export default function StripeDemoPage() {
@@ -60,12 +84,14 @@ export default function StripeDemoPage() {
   const [canConfirm, setCanConfirm] = useState(false);
   const [totalLabel, setTotalLabel] = useState<string>("");
   const [sessionId, setSessionId] = useState<string>("");
+  const [clientSecret, setClientSecret] = useState<string>("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const logIdRef = useRef(1);
   const stripeRef = useRef<any>(null);
   const checkoutRef = useRef<any>(null);
   const paymentElRef = useRef<any>(null);
+  const expressElRef = useRef<any>(null);
   const actionsRef = useRef<any>(null);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
@@ -145,6 +171,50 @@ export default function StripeDemoPage() {
     ? (effectiveReturnUrl || "—")
     : "…";
 
+  /* ── 支付方式列表 ── */
+  const paymentMethodTypes = useMemo(() => {
+    const list: string[] = [];
+    if (f.pmCard) list.push("card");
+    if (f.pmLink) list.push("link");
+    if (f.pmPaypal) list.push("paypal");
+    return list;
+  }, [f.pmCard, f.pmLink, f.pmPaypal]);
+
+  /* ── 天枢下单（Stripe）── */
+  const tianshuCreateStripeOrder = async () => {
+    if (!f.tsAppKey.trim() || !f.tsAppSecret.trim()) return pushLog("error", "天枢 App Key / App Secret 必填");
+    if (!f.tsDeviceId.trim()) return pushLog("error", "设备 ID 必填");
+    if (!f.tsCommodityId.trim()) return pushLog("error", "商品 ID (commodityId) 必填");
+
+    setBusy("ts-order");
+    pushLog("info", "POST /api/tianshu/create-stripe-order …");
+    const r = await callApi("/api/tianshu/create-stripe-order", {
+      appKey: f.tsAppKey.trim(),
+      appSecret: f.tsAppSecret.trim(),
+      deviceId: f.tsDeviceId.trim(),
+      commodityId: f.tsCommodityId.trim(),
+      payScene: f.tsPayScene,
+    });
+    setBusy(null);
+
+    if (!r.ok || r.data?.code !== 0) {
+      return pushLog("error",
+        `天枢下单失败 (${r.status})${r.data?.msg ? "：" + r.data.msg : ""}`, r.data);
+    }
+
+    const d = r.data ?? {};
+    if (d.clientSecret) setClientSecret(d.clientSecret);
+    if (d.publishableKey) set("publishableKey", d.publishableKey);
+    if (d.currency) set("currency", String(d.currency).toLowerCase());
+    if (d.orderAmount != null) set("amount", String(Math.round(Number(d.orderAmount) * 100)));
+    if (d.commodityName) set("productName", d.commodityName);
+    if (d.invoiceId) setSessionId(d.invoiceId);
+
+    pushLog("success",
+      `天枢下单成功 · subscription=${d.subscriptionId ?? "?"} · status=${d.status ?? "?"} · 已回填 clientSecret / publishableKey`,
+      { clientSecret: d.clientSecret ? d.clientSecret.slice(0, 24) + "…" : null, subscriptionId: d.subscriptionId, status: d.status, currency: d.currency, orderAmount: d.orderAmount });
+  };
+
   /* ── 创建 Checkout Session ── */
   const createSession = async () => {
     if (!f.secretKey.trim()) return pushLog("error", "Secret Key 必填（服务端使用，不会暴露给前端）");
@@ -165,11 +235,13 @@ export default function StripeDemoPage() {
       customerEmail: f.customerEmail.trim() || undefined,
       locale: f.locale.trim() || undefined,
       returnUrl: effectiveReturnUrl,
+      paymentMethodTypes: paymentMethodTypes.length ? paymentMethodTypes : undefined,
     });
     setBusy(null);
     if (!r.ok) return pushLog("error", `创建 Session 失败 (${r.status})`, r.data);
 
     setSessionId(r.data?.id ?? "");
+    setClientSecret(r.data?.clientSecret ?? "");
     // 存一份到 sessionStorage，供 /stripe-demo/complete 自动查询状态；
     // 仅当前标签页有效，关闭即清除，且不进 localStorage。
     try { sessionStorage.setItem(STORAGE_KEY + ":secret", f.secretKey.trim()); } catch {}
@@ -193,31 +265,43 @@ export default function StripeDemoPage() {
       if (paymentElRef.current) { try { paymentElRef.current.destroy(); } catch {} paymentElRef.current = null; }
       actionsRef.current = null;
 
-      // 1) 先拿 client_secret（已有则可复用）
-      let clientSecret: string | undefined;
-      if (checkoutRef.current && sessionId) {
-        pushLog("info", `复用已有 Session · ${sessionId}`);
-      } else {
+      // 1) 取得 client_secret
+      //    - 天枢模式：必须已经通过「天枢下单」拿到，不再自行建单
+      //    - 直连模式：已有则复用，否则现场创建
+      if (f.source === "tianshu") {
+        if (!clientSecret) {
+          pushLog("error", "天枢模式请先点「天枢下单」拿到 clientSecret");
+          setBusy(null);
+          return;
+        }
+        pushLog("info", "使用天枢返回的 clientSecret");
+      } else if (!clientSecret) {
         const created = await createSession();
         if (!created?.clientSecret) { setBusy(null); return; }
-        clientSecret = created.clientSecret;
+      } else {
+        pushLog("info", `复用已有 clientSecret · session=${sessionId || "?"}`);
       }
 
-      // 2) 初始化 Stripe.js
+      const secretForInit = f.source === "tianshu"
+        ? clientSecret
+        : (clientSecret || checkoutRef.current?.clientSecret);
+
+      // 2) 初始化 Stripe.js（Publishable Key 来自页面或天枢）
       if (!stripeRef.current) {
+        if (!f.publishableKey.trim()) {
+          pushLog("error", "Publishable Key 必填（天枢模式会自动回填）");
+          setBusy(null);
+          return;
+        }
         stripeRef.current = window.Stripe(f.publishableKey.trim());
         pushLog("info", "Stripe(publishableKey) 已初始化");
       }
 
       // 3) 初始化 Checkout Elements SDK
-      const secretForInit = clientSecret ?? checkoutRef.current?.clientSecret;
-      const csPromise = secretForInit
-        ? Promise.resolve(secretForInit)
-        : fetch("/api/stripe/create-session", { method: "POST" }).then(() => undefined);
-
       pushLog("info", "stripe.initCheckoutElementsSdk({ clientSecret })");
+
       checkoutRef.current = stripeRef.current.initCheckoutElementsSdk({
-        clientSecret: secretForInit ?? csPromise,
+        clientSecret: secretForInit,
       });
 
       checkoutRef.current.on("change", (session: any) => {
@@ -227,13 +311,7 @@ export default function StripeDemoPage() {
         pushLog("info", `event: change — total=${label || "?"} canConfirm=${!!session?.canConfirm}`);
       });
 
-      // 4) 挂载 Payment Element
-      pushLog("info", "checkout.createPaymentElement() + mount()");
-      const pe = checkoutRef.current.createPaymentElement();
-      pe.mount("#stripe-payment-element");
-      paymentElRef.current = pe;
-
-      // 5) 载入 actions（confirm 用）
+      // 4) 先载入 actions（Express Checkout 的 confirm 回调需要它）
       const loaded = await checkoutRef.current.loadActions();
       if (loaded?.type === "error") {
         pushLog("error", "loadActions 失败", loaded.error);
@@ -241,8 +319,58 @@ export default function StripeDemoPage() {
         return;
       }
       actionsRef.current = loaded.actions ?? loaded;
+      pushLog("info", "checkout.loadActions() 完成");
+
+      // 5) 挂载 Express Checkout Element（Apple Pay / Google Pay / Link 一键支付）
+      if (f.showExpressCheckout) {
+        pushLog("info", "checkout.createExpressCheckoutElement() + mount()");
+        const ece = checkoutRef.current.createExpressCheckoutElement({
+          buttonType: { applePay: "check-out", googlePay: "checkout", paypal: "buynow" },
+          buttonHeight: 48,
+        });
+
+        ece.on("availablepaymentmethodschange", (ev: any) => {
+          const pm = ev?.paymentMethods;
+          const names = pm
+            ? Object.keys(pm).filter((k) => pm[k])
+            : [];
+          pushLog("info", `event: availablepaymentmethodschange — ${
+            names.length ? names.join(", ") : "当前环境没有可用的一键支付按钮"
+          }`);
+        });
+
+        // 关键：点击后必须用 confirm event 调 actions.confirm()
+        ece.on("confirm", async (ev: any) => {
+          pushLog("info", "event: expressCheckout confirm — 调用 actions.confirm()");
+          try {
+            const res = await actionsRef.current.confirm({ expressCheckoutConfirmEvent: ev });
+            if (res?.type === "error") {
+              pushLog("error", `Express Checkout 支付失败 — ${res.error?.message ?? "unknown"}`, res.error);
+              ev?.paymentFailed?.({ reason: "fail" });
+            } else {
+              pushLog("success", "Express Checkout confirm 完成", res);
+            }
+          } catch (e: any) {
+            pushLog("error", "Express Checkout confirm 异常：" + (e?.message || String(e)));
+            ev?.paymentFailed?.({ reason: "fail" });
+          }
+        });
+
+        ece.mount("#stripe-express-checkout");
+        expressElRef.current = ece;
+        pushLog("info", "Express Checkout Element 已挂载（Apple Pay / Google Pay 视浏览器与地区而定）");
+      }
+
+      // 6) 挂载 Payment Element
+      if (f.showPaymentElement) {
+        pushLog("info", "checkout.createPaymentElement() + mount()");
+        const pe = checkoutRef.current.createPaymentElement();
+        pe.mount("#stripe-payment-element");
+        paymentElRef.current = pe;
+      }
+
       setMounted(true);
-      pushLog("success", "Payment Element 已挂载，actions 已就绪");
+      pushLog("success", "组件已挂载，actions 已就绪");
     } catch (e: any) {
       pushLog("error", "挂载失败：" + (e?.message || String(e)));
     } finally {
@@ -341,6 +469,71 @@ export default function StripeDemoPage() {
       <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* 左：表单 */}
         <div className="min-w-0 space-y-4">
+          <Card title="订单来源">
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="inline-flex cursor-pointer items-center gap-2">
+                <input type="radio" name="stripe-source"
+                  checked={f.source === "stripe"}
+                  onChange={() => set("source", "stripe")} />
+                <span>直连 Stripe（用下面的 Secret Key 自己建 Session）</span>
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-2">
+                <input type="radio" name="stripe-source"
+                  checked={f.source === "tianshu"}
+                  onChange={() => set("source", "tianshu")} />
+                <span>天枢后端下单（store=5 Stripe，返回 clientSecret + publishableKey）</span>
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              {f.source === "stripe"
+                ? "当前：调 /api/stripe/create-session 建 Checkout Session。"
+                : "当前：调 /api/tianshu/create-stripe-order（createStripeSubscription，store=5），密钥在下方填写，不会写进代码或本地存储。"}
+            </p>
+          </Card>
+
+          {f.source === "tianshu" && (
+          <Card title="天枢后端下单（测试环境 · Stripe）">
+            <Row>
+              <Field label="App Key">
+                <input className="input font-mono" value={f.tsAppKey}
+                  onChange={(e) => set("tsAppKey", e.target.value)}
+                  placeholder="ef7o…" autoComplete="off" spellCheck={false} />
+              </Field>
+              <Field label="App Secret（不写入本地存储）">
+                <input className="input font-mono" type="password" value={f.tsAppSecret}
+                  onChange={(e) => set("tsAppSecret", e.target.value)}
+                  placeholder="•••" autoComplete="off" spellCheck={false} />
+              </Field>
+              <Field label="设备 ID（deviceId）">
+                <input className="input font-mono" value={f.tsDeviceId}
+                  onChange={(e) => set("tsDeviceId", e.target.value)}
+                  placeholder="例如 20220615-001" />
+              </Field>
+              <Field label="商品 ID（commodityId）">
+                <input className="input font-mono" value={f.tsCommodityId}
+                  onChange={(e) => set("tsCommodityId", e.target.value)}
+                  placeholder="例如 10001" />
+              </Field>
+              <Field label="payScene">
+                <select className="input" value={f.tsPayScene} onChange={(e) => set("tsPayScene", e.target.value)}>
+                  <option value="website">website（官网）</option>
+                  <option value="inapp">inapp（应用内）</option>
+                </select>
+              </Field>
+            </Row>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={tianshuCreateStripeOrder} disabled={busy === "ts-order"} className="btn-primary">
+                {busy === "ts-order" ? "…" : "天枢下单 → 回填 clientSecret + publishableKey"}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              固定参数：store=5（Stripe）、prdId=99999962、包名 com.faxing.open、渠道 61。
+              下单成功后切换到右侧「创建并挂载」即可。
+            </p>
+          </Card>
+          )}
+
+          {f.source === "stripe" && (
           <Card title="Stripe 密钥（Secret Key 只 POST 给本项目的 /api/stripe/*，不会进前端 SDK）">
             <Row>
               <Field label="Publishable Key">
@@ -355,6 +548,7 @@ export default function StripeDemoPage() {
               </Field>
             </Row>
           </Card>
+          )}
 
           <Card title="商品与金额">
             <Row>
@@ -413,6 +607,50 @@ export default function StripeDemoPage() {
             </Row>
           </Card>
 
+          <Card title="支付方式与组件">
+            <div className="mb-3">
+              <p className="mb-2 text-xs font-medium text-slate-700">挂载哪些组件</p>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <input type="checkbox" checked={f.showExpressCheckout}
+                    onChange={(e) => set("showExpressCheckout", e.target.checked)} />
+                  <span>Express Checkout（Apple Pay / Google Pay / Link 一键支付）</span>
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <input type="checkbox" checked={f.showPaymentElement}
+                    onChange={(e) => set("showPaymentElement", e.target.checked)} />
+                  <span>Payment Element（卡号 / 更多支付方式表单）</span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-medium text-slate-700">
+                payment_method_types（<code>card</code> 会自动启用 Apple Pay 与 Google Pay）
+              </p>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <input type="checkbox" checked={f.pmCard}
+                    onChange={(e) => set("pmCard", e.target.checked)} />
+                  <span>card</span>
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <input type="checkbox" checked={f.pmLink}
+                    onChange={(e) => set("pmLink", e.target.checked)} />
+                  <span>link</span>
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <input type="checkbox" checked={f.pmPaypal}
+                    onChange={(e) => set("pmPaypal", e.target.checked)} />
+                  <span>paypal</span>
+                </label>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                都不勾选则使用 Stripe 后台的默认支付方式设置。当前：{paymentMethodTypes.join(", ") || "（用后台默认）"}
+              </p>
+            </div>
+          </Card>
+
           <Card title="结算">
             <Field label="return_url（留空则自动使用本页域名下的 /stripe-demo/complete）">
               <input className="input font-mono" value={f.returnUrl}
@@ -420,16 +658,20 @@ export default function StripeDemoPage() {
                 placeholder="/stripe-demo/complete?session_id={CHECKOUT_SESSION_ID}" />
             </Field>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button onClick={createSession} disabled={busy === "session"} className="btn-secondary">
-                {busy === "session" ? "…" : "① 创建 Checkout Session"}
-              </button>
+              {f.source === "stripe" && (
+                <button onClick={createSession} disabled={busy === "session"} className="btn-secondary">
+                  {busy === "session" ? "…" : "① 创建 Checkout Session"}
+                </button>
+              )}
               <button onClick={mountElements} disabled={busy === "mount"} className="btn-primary">
-                {busy === "mount" ? "…" : "② 创建并挂载 Payment Element"}
+                {busy === "mount" ? "…" : f.source === "stripe" ? "② 创建并挂载" : "② 挂载（用天枢的 clientSecret）"}
               </button>
               <button onClick={resetFlow} className="btn">重置</button>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              ② 会先建 Session 再挂载。若已有 Session 则会复用；换金额请先点「重置」。
+              {f.source === "stripe"
+                ? "② 会先建 Session 再挂载。若已有 Session 则会复用；换金额请先点「重置」。"
+                : "先在上面点「天枢下单」拿到 clientSecret，再点 ② 挂载。换单请先点「重置」。"}
             </p>
           </Card>
 
@@ -456,19 +698,43 @@ export default function StripeDemoPage() {
 
         {/* 右：预览 + 日志 */}
         <aside className="min-w-0 space-y-4">
-          <Card title="Payment Element 预览">
-            <div className="rounded-md border border-dashed border-slate-300 bg-white p-3">
-              <div id="stripe-payment-element" className="min-h-[120px]" />
-              {!mounted && (
-                <p className="py-6 text-center text-xs text-slate-400">
-                  挂载后 Stripe 的支付表单会出现在这里
-                </p>
-              )}
-            </div>
+          <Card title="支付组件预览">
+            {f.showExpressCheckout && (
+              <div className="mb-3">
+                <p className="mb-1 text-[11px] text-slate-500">Express Checkout（Apple Pay / Google Pay）</p>
+                <div className="rounded-md border border-dashed border-slate-300 bg-white p-3">
+                  <div id="stripe-express-checkout" className="min-h-[48px]" />
+                  <p className="hidden py-3 text-center text-xs text-slate-400" id="ece-hint">
+                    挂载后一键支付按钮会出现在这里。按钮只在支持的浏览器 + 已注册域名 + 钱包有卡时才显示。
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {f.showPaymentElement && (
+              <div>
+                <p className="mb-1 text-[11px] text-slate-500">Payment Element</p>
+                <div className="rounded-md border border-dashed border-slate-300 bg-white p-3">
+                  <div id="stripe-payment-element" className="min-h-[120px]" />
+                  {!mounted && (
+                    <p className="py-6 text-center text-xs text-slate-400">
+                      挂载后 Stripe 的支付表单会出现在这里
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!f.showExpressCheckout && !f.showPaymentElement && (
+              <p className="py-6 text-center text-xs text-slate-400">
+                至少勾选一个组件才能挂载
+              </p>
+            )}
+
             <p className="mt-2 text-xs text-slate-500">
               {mounted
                 ? `已挂载${totalLabel ? ` · 金额 ${totalLabel}` : ""}${canConfirm ? " · 可提交" : " · 信息未填完"}`
-                : "填好密钥后点左侧「② 创建并挂载 Payment Element」"}
+                : "填好密钥后点左侧「② 创建并挂载」"}
             </p>
           </Card>
 
@@ -512,6 +778,7 @@ export default function StripeDemoPage() {
           <Card title="当前会话">
             <div className="space-y-1 text-xs text-slate-600">
               <div><b>session_id</b>：{sessionId || "—"}</div>
+              <div className="break-all"><b>clientSecret</b>：{clientSecret ? clientSecret.slice(0, 28) + "…" : "—"}</div>
               <div><b>total</b>：{totalLabel || "—"}</div>
               <div><b>canConfirm</b>：{String(canConfirm)}</div>
               <div className="break-all"><b>return_url</b>：{displayReturnUrl}</div>
