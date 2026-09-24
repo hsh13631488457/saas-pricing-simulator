@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TestCards, STRIPE_CARDS } from "../components/TestCards";
 
 /* ────────── Stripe.js 类型占位 ────────── */
 declare global {
@@ -230,6 +231,7 @@ export default function StripeDemoPage() {
     pushLog("success",
       `天枢下单成功 · subscription=${d.subscriptionId ?? "?"} · status=${d.status ?? "?"} · 已回填 clientSecret / publishableKey`,
       r.data);
+    pushLog("info", "本次下单请求参数", r.data?._debug?.requestSent);
   };
 
   /* ── 创建 Checkout Session ── */
@@ -771,6 +773,10 @@ export default function StripeDemoPage() {
                 ? `已挂载${totalLabel ? ` · 金额 ${totalLabel}` : ""}${canConfirm ? " · 可提交" : " · 信息未填完"}`
                 : "填好密钥后点左侧「② 创建并挂载」"}
             </p>
+          </Card>
+
+          <Card title="测试卡号（Stripe 测试模式）">
+            <TestCards cards={STRIPE_CARDS} />
           </Card>
 
           <Card title="环境自检">

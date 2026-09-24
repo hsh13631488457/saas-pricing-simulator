@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { TestCards, AIRWALLEX_CARDS } from "../components/TestCards";
 
 /* ────────── Airwallex SDK type shim ────────── */
 declare global {
@@ -569,6 +570,9 @@ export default function AirwallexDemoPage() {
     pushLog("success",
       `下单成功 · orderId=${d.orderId ?? "?"} · 金额 $${d.orderAmount ?? "?"} · 已回填 intent_id / client_secret / customer_id`,
       r.data);
+    if (r.data?._debug?.requestSent) {
+      pushLog("info", "本次下单请求参数", r.data._debug.requestSent);
+    }
   };
 
   /* ── Payment Link：生成托管收银台链接 ── */
@@ -1318,6 +1322,10 @@ export default function AirwallexDemoPage() {
             )}
           </Card>
           )}
+
+          <Card title="测试卡号（Airwallex 沙箱）">
+            <TestCards cards={AIRWALLEX_CARDS} />
+          </Card>
 
           <Card title="环境自检">
             <ul className="space-y-1 text-xs">

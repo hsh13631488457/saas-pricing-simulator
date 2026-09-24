@@ -66,22 +66,21 @@ export async function POST(req: NextRequest) {
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
 
   // 业务失败时附带 traceId 与请求快照，便于和后端对账
-  const failed = !res.ok || (data && typeof data.code === "number" && data.code !== 0);
-  const out = failed
-    ? {
-        ...(data ?? {}),
-        _debug: {
-          upstreamStatus: res.status,
-          traceId: data?.traceId ?? res.headers.get("traceid") ?? null,
-          requestSent: {
-            payload,
-            authorization,
-            tokenCached: auth.cached,
-            appKey: appKey.slice(0, 4) + "…",
-          },
-        },
-      }
-    : data;
+  // 无论成功失败都回传请求参数，便于核对
+  const out = {
+    ...(data ?? {}),
+    _debug: {
+      upstreamStatus: res.status,
+      traceId: data?.traceId ?? res.headers.get("traceid") ?? null,
+      requestSent: {
+        url: `${TIANSHU_BASE}/overseas_store_service/s2s/purchase/createAirwallexOrder`,
+        payload,
+        authorization,
+        tokenCached: auth.cached,
+        appKey: appKey.slice(0, 4) + "…",
+      },
+    },
+  };
 
   return new Response(JSON.stringify(out), {
     status: res.ok ? 200 : res.status || 502,
