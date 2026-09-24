@@ -274,13 +274,22 @@ export default function StripeDemoPage() {
   /* ── 挂载 Payment Element ── */
   const mountElements = async () => {
     if (!window.Stripe) return pushLog("error", "Stripe.js 尚未加载完成");
-    if (!f.publishableKey.trim()) return pushLog("error", "Publishable Key 必填");
-    if (!f.secretKey.trim()) return pushLog("error", "Secret Key 必填");
+    if (!f.publishableKey.trim()) return pushLog("error", "Publishable Key 必填（天枢模式下单时会自动回填）");
+    // 天枢模式用后端返回的 clientSecret，不需要 Secret Key
+    if (f.source === "stripe" && !f.secretKey.trim()) {
+      return pushLog("error", "Secret Key 必填（服务端使用，不会暴露给前端）");
+    }
+    if (f.source === "tianshu" && !clientSecret) {
+      return pushLog("error", "请先点「天枢下单」拿到 clientSecret");
+    }
 
     try {
       setBusy("mount");
-      if (paymentElRef.current) { try { paymentElRef.current.destroy(); } catch {} paymentElRef.current = null; }
+      // 每次挂载都清掉旧实例，确保用当前的 clientSecret / publishableKey
+      try { paymentElRef.current?.destroy(); } catch {}
+      paymentElRef.current = null;
       actionsRef.current = null;
+      checkoutRef.current = null;
 
       // 1) 取得 client_secret
       //    - 天枢模式：必须已经通过「天枢下单」拿到，不再自行建单
@@ -304,15 +313,15 @@ export default function StripeDemoPage() {
         : (clientSecret || checkoutRef.current?.clientSecret);
 
       // 2) 初始化 Stripe.js（Publishable Key 来自页面或天枢）
-      if (!stripeRef.current) {
-        if (!f.publishableKey.trim()) {
-          pushLog("error", "Publishable Key 必填（天枢模式会自动回填）");
-          setBusy(null);
-          return;
-        }
-        stripeRef.current = window.Stripe(f.publishableKey.trim());
-        pushLog("info", "Stripe(publishableKey) 已初始化");
+      //    每次挂载都重新创建，避免换 key（如切到天枢回填的 key）后仍用旧实例
+      const pk = f.publishableKey.trim();
+      if (!pk) {
+        pushLog("error", "Publishable Key 必填（天枢模式下单时会自动回填）");
+        setBusy(null);
+        return;
       }
+      stripeRef.current = window.Stripe(pk);
+      pushLog("info", `Stripe(publishableKey) 已初始化 · ${pk.slice(0, 12)}…`);
 
       // 3) 初始化 Checkout Elements SDK
       pushLog("info", "stripe.initCheckoutElementsSdk({ clientSecret })");
@@ -545,27 +554,36 @@ export default function StripeDemoPage() {
             </div>
             <p className="mt-2 text-xs text-slate-500">
               固定参数：store=5（Stripe）、prdId=99999962、包名 com.faxing.open、渠道 61。
-              下单成功后切换到右侧「创建并挂载」即可。
+              下单成功后 clientSecret 与 publishableKey 会自动回填，再点 ② 挂载即可。
             </p>
           </Card>
           )}
 
-          {f.source === "stripe" && (
-          <Card title="Stripe 密钥（Secret Key 只 POST 给本项目的 /api/stripe/*，不会进前端 SDK）">
+          <Card title={
+            f.source === "tianshu"
+              ? "Stripe Publishable Key（天枢下单时自动回填）"
+              : "Stripe 密钥（Secret Key 只 POST 给本项目的 /api/stripe/*，不会进前端 SDK）"
+          }>
             <Row>
               <Field label="Publishable Key">
                 <input className="input font-mono" value={f.publishableKey}
                   onChange={(e) => set("publishableKey", e.target.value)}
                   placeholder="pk_test_…" autoComplete="off" spellCheck={false} />
               </Field>
+              {f.source === "stripe" && (
               <Field label="Secret Key（不写入本地存储）">
                 <input className="input font-mono" type="password" value={f.secretKey}
                   onChange={(e) => set("secretKey", e.target.value)}
                   placeholder="sk_test_…" autoComplete="off" spellCheck={false} />
               </Field>
+              )}
             </Row>
+            {f.source === "tianshu" && (
+              <p className="mt-1 text-xs text-slate-500">
+                天枢模式不需要 Secret Key —— clientSecret 由你们后端创建，前端只负责挂载。
+              </p>
+            )}
           </Card>
-          )}
 
           <Card title="商品与金额">
             <Row>

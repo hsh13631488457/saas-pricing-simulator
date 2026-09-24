@@ -1063,8 +1063,8 @@ export default function AirwallexDemoPage() {
               <Toggle label="existingPaymentMethodRequired" checked={f.existingPaymentMethodRequired} onChange={(v) => set("existingPaymentMethodRequired", v)} />
             </Row>
             <p className="mt-1 text-xs text-slate-500">
-              autoCapture 默认 true：授权成功后立即扣款。设为 false 则只冻结资金，稍后手动 capture。
-              authorizationType 选 pre_auth 时会自动把 autoCapture 置为 false。
+              autoCapture 完全由你控制，默认 true（授权成功后立即扣款）；设为 false 则只冻结资金，稍后手动 capture。
+              与 authorizationType 相互独立，页面不做任何联动。
             </p>
           </Card>
           )}
@@ -1094,8 +1094,8 @@ export default function AirwallexDemoPage() {
               <Toggle label="autoCapture" checked={f.autoCapture} onChange={(v) => set("autoCapture", v)} />
             </Row>
             <p className="mt-1 text-xs text-slate-500">
-              autoCapture 默认 true：授权成功后立即扣款。设为 false 则只冻结资金，稍后手动 capture。
-              authorizationType 选 pre_auth 时会自动把 autoCapture 置为 false。
+              autoCapture 完全由你控制，默认 true（授权成功后立即扣款）；设为 false 则只冻结资金，稍后手动 capture。
+              与 authorizationType 相互独立，页面不做任何联动。
             </p>
             {f.method === "dropIn" && (
               <p className="mt-2 text-xs text-slate-500">
