@@ -40,7 +40,7 @@ const DEFAULT_LINE_ITEMS = JSON.stringify(
 
 /* ────────── 表单默认值 ────────── */
 interface FormState {
-  method: "applePay" | "dropIn" | "card" | "link";
+  method: "applePay" | "dropIn" | "card" | "link" | "paymentLink";
   env: "demo" | "sandbox" | "prod";
   mode: "payment" | "recurring";
   locale: string;
@@ -84,13 +84,26 @@ interface FormState {
   lineItemsEnabled: boolean;
   lineItemsJson: string;
   /* 天枢后端下单 */
-  source: "airwallex" | "tianshu";
-  tsAppKey: string;
+  source: "airwallex" | "tianshu";  tsAppKey: string;
   tsAppSecret: string;
   tsDeviceId: string;
   tsCommodityId: string;
   tsPayScene: string;
   tsTransferParameter: string;
+  /* Payment Link */
+  plTitle: string;
+  plAmount: string;
+  plCurrency: string;
+  plReusable: boolean;
+  plDescription: string;
+  plReference: string;
+  plExpiresAt: string;
+  plCollectBilling: boolean;
+  plCollectPhone: boolean;
+  plCollectShipping: boolean;
+  plCollectReference: boolean;
+  plCollectMessage: boolean;
+  plMetadata: string;
 }
 
 const DEFAULTS: FormState = {
@@ -144,6 +157,19 @@ const DEFAULTS: FormState = {
   tsCommodityId: "",
   tsPayScene: "website",
   tsTransferParameter: "",
+  plTitle: "Order #1529",
+  plAmount: "10.00",
+  plCurrency: "USD",
+  plReusable: false,
+  plDescription: "",
+  plReference: "",
+  plExpiresAt: "",
+  plCollectBilling: false,
+  plCollectPhone: false,
+  plCollectShipping: false,
+  plCollectReference: false,
+  plCollectMessage: true,
+  plMetadata: "",
 };
 
 /* ────────── 日志 ────────── */
@@ -176,13 +202,23 @@ function buildConsent(f: FormState) {
   return pc;
 }
 
+/* 最小单位（分）→ 主单位。split card 的 amount.value 用主单位，
+   而 applePayButton 用最小单位，两者相差 100 倍。 */
+function toMajorUnits(minor: string | number): number {
+  const n = Number(minor);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n) / 100;
+}
+
 function buildConfig(f: FormState) {
   /* Link 式布局：Apple Pay 按钮 + split card 三个字段，由页面自行排版 */
   if (f.method === "link") {
+    const cur = (f.currency || "USD").toUpperCase();
     return {
       _layout: "Apple Pay 按钮挂 applePayButton，卡号/有效期/CVC 分别挂 cardNumber/expiry/cvc",
       applePay: {
-        amount: { value: f.amountValue, currency: (f.currency || "USD").toUpperCase() },
+        // applePayButton 的 amount.value 用最小单位（字符串）
+        amount: { value: f.amountValue, currency: cur },
         countryCode: (f.countryCode || "US").toUpperCase(),
         totalPriceLabel: f.totalPriceLabel,
         buttonType: f.buttonType,
@@ -191,7 +227,11 @@ function buildConfig(f: FormState) {
       cardNumber: {
         intent_id: f.intentId.trim(),
         client_secret: f.clientSecret.trim(),
-        currency: (f.currency || "USD").toUpperCase(),
+        currency: cur,
+        // cardNumber 的 amount.value 用主单位（数字）
+        amount: { value: toMajorUnits(f.amountValue), currency: cur },
+        autoCapture: f.autoCapture,
+        authorizationType: f.authorizationType,
       },
       expiry: {},
       cvc: {},
@@ -205,6 +245,8 @@ function buildConfig(f: FormState) {
       client_secret: f.clientSecret.trim(),
       currency: (f.currency || "USD").toUpperCase(),
       countryCode: (f.countryCode || "US").toUpperCase(),
+      autoCapture: f.autoCapture,
+      authorizationType: f.authorizationType,
       methods: [
         { name: "card" },
         { name: "applepay", countryCode: (f.countryCode || "US").toUpperCase() },
@@ -220,6 +262,8 @@ function buildConfig(f: FormState) {
       intent_id: f.intentId.trim(),
       client_secret: f.clientSecret.trim(),
       currency: (f.currency || "USD").toUpperCase(),
+      autoCapture: f.autoCapture,
+      authorizationType: f.authorizationType,
     };
     if (f.customerId.trim()) c.customer_id = f.customerId.trim();
     return c;
@@ -494,11 +538,20 @@ export default function AirwallexDemoPage() {
       transferParameter: f.tsTransferParameter.trim() || undefined,
     });
     setBusy(null);
-    if (!r.ok) return pushLog("error", `下单失败 (${r.status})`, r.data);
+
+    // 天枢在业务失败时也可能返回 HTTP 200，必须同时检查 code
+    if (!r.ok) {
+      const msg = r.data?.msg ?? r.data?.error ?? "未知错误";
+      return pushLog("error",
+        `下单失败 · HTTP ${r.status} · code=${r.data?.code ?? "?"} · ${msg}`,
+        r.data);
+    }
 
     const d = r.data?.data ?? {};
     if (r.data?.code !== 0 || !d.clientSecret) {
-      return pushLog("error", `天枢返回异常：${r.data?.msg ?? "code≠0"}`, r.data);
+      return pushLog("error",
+        `天枢返回异常 · code=${r.data?.code ?? "?"} · ${r.data?.msg ?? "data 里没有 clientSecret"}`,
+        r.data);
     }
 
     if (d.clientSecret) set("clientSecret", d.clientSecret);
@@ -516,6 +569,56 @@ export default function AirwallexDemoPage() {
     pushLog("success",
       `下单成功 · orderId=${d.orderId ?? "?"} · 金额 $${d.orderAmount ?? "?"} · 已回填 intent_id / client_secret / customer_id`,
       r.data);
+  };
+
+  /* ── Payment Link：生成托管收银台链接 ── */
+  const [paymentLinkUrl, setPaymentLinkUrl] = useState<string>("");
+
+  const createPaymentLink = async () => {
+    if (!f.clientId.trim() || !f.apiKey.trim()) return pushLog("error", "Client ID 和 API Key 必填");
+    if (!f.plTitle.trim()) return pushLog("error", "title 必填");
+
+    setBusy("pl");
+    pushLog("info", "POST /api/awx/create-payment-link …");
+    const r = await callApi("/api/awx/create-payment-link", {
+      env: f.env,
+      clientId: f.clientId.trim(),
+      apiKey: f.apiKey.trim(),
+      title: f.plTitle.trim(),
+      reusable: f.plReusable,
+      // amount 用主单位（10.00 = 10 美元），与 PaymentIntent 的最小单位不同
+      amount: f.plAmount.trim() === "" ? undefined : Number(f.plAmount),
+      currency: f.plCurrency.trim().toUpperCase(),
+      description: f.plDescription.trim() || undefined,
+      reference: f.plReference.trim() || undefined,
+      expires_at: f.plExpiresAt.trim() || undefined,
+      metadata: f.plMetadata.trim() || undefined,
+      collectable_shopper_info: {
+        billing_address: f.plCollectBilling,
+        phone_number: f.plCollectPhone,
+        shipping_address: f.plCollectShipping,
+        reference: f.plCollectReference,
+        message: f.plCollectMessage,
+      },
+    });
+    setBusy(null);
+
+    if (!r.ok) {
+      return pushLog("error",
+        `创建 Payment Link 失败 · HTTP ${r.status} · ${r.data?.error ?? r.data?.message ?? "未知错误"}`,
+        r.data);
+    }
+
+    const url = r.data?.url ?? "";
+    setPaymentLinkUrl(url);
+    pushLog("success",
+      `Payment Link 已创建 · id=${r.data?.id ?? "?"} · status=${r.data?.status ?? "?"}`,
+      r.data);
+
+    if (url) {
+      pushLog("info", `收银台链接：${url}`);
+      try { await navigator.clipboard.writeText(url); pushLog("info", "链接已复制到剪贴板"); } catch {}
+    }
   };
 
   /* ── 挂载 ── */
@@ -710,6 +813,7 @@ export default function AirwallexDemoPage() {
     { id: "dropIn",   label: "Drop-in",   hint: "卡 + Apple Pay + Google Pay 一体" },
     { id: "card",     label: "Card",      hint: "纯卡号 / 有效期 / CVC" },
     { id: "link",     label: "Link 式布局", hint: "Apple Pay 在上、卡号表单在下的自拼布局" },
+    { id: "paymentLink", label: "Payment Link", hint: "生成 Airwallex 托管收银台链接（不挂载组件）" },
   ] as const;
 
   const switchMethod = (m: FormState["method"]) => {
@@ -950,7 +1054,7 @@ export default function AirwallexDemoPage() {
               <Field label="authorizationType">
                 <select className="input" value={f.authorizationType} onChange={(e) => set("authorizationType", e.target.value as any)}>
                   <option value="final_auth">final_auth</option>
-                  <option value="pre_auth">pre_auth</option>
+                  <option value="pre_auth">pre_auth（仅 Visa / Mastercard）</option>
                 </select>
               </Field>
             </Row>
@@ -958,13 +1062,17 @@ export default function AirwallexDemoPage() {
               <Toggle label="autoCapture" checked={f.autoCapture} onChange={(v) => set("autoCapture", v)} />
               <Toggle label="existingPaymentMethodRequired" checked={f.existingPaymentMethodRequired} onChange={(v) => set("existingPaymentMethodRequired", v)} />
             </Row>
+            <p className="mt-1 text-xs text-slate-500">
+              autoCapture 默认 true：授权成功后立即扣款。设为 false 则只冻结资金，稍后手动 capture。
+              authorizationType 选 pre_auth 时会自动把 autoCapture 置为 false。
+            </p>
           </Card>
           )}
 
-          {f.method !== "applePay" && (
+          {f.method !== "applePay" && f.method !== "paymentLink" && (
           <Card title="基础参数">
             <Row>
-              <Field label="amount.value（仅用于创建 intent 时的参考值）">
+              <Field label="amount（仅用于创建 intent 时的参考值）">
                 <input className="input" value={f.amountValue} onChange={(e) => set("amountValue", e.target.value)} placeholder='"100"' />
               </Field>
               <Field label="currency">
@@ -975,7 +1083,20 @@ export default function AirwallexDemoPage() {
               <Field label="countryCode（ISO2）">
                 <input className="input uppercase" maxLength={2} value={f.countryCode} onChange={(e) => set("countryCode", e.target.value.toUpperCase())} />
               </Field>
+              <Field label="authorizationType">
+                <select className="input" value={f.authorizationType} onChange={(e) => set("authorizationType", e.target.value as any)}>
+                  <option value="final_auth">final_auth</option>
+                  <option value="pre_auth">pre_auth（仅 Visa / Mastercard）</option>
+                </select>
+              </Field>
             </Row>
+            <Row>
+              <Toggle label="autoCapture" checked={f.autoCapture} onChange={(v) => set("autoCapture", v)} />
+            </Row>
+            <p className="mt-1 text-xs text-slate-500">
+              autoCapture 默认 true：授权成功后立即扣款。设为 false 则只冻结资金，稍后手动 capture。
+              authorizationType 选 pre_auth 时会自动把 autoCapture 置为 false。
+            </p>
             {f.method === "dropIn" && (
               <p className="mt-2 text-xs text-slate-500">
                 挂载后会同时出现卡号输入框、Apple Pay 按钮、Google Pay 按钮 —— 具体显示哪些取决于你的 Airwallex 账户开通了哪些支付方式。
@@ -1054,6 +1175,7 @@ export default function AirwallexDemoPage() {
 
         {/* 右：预览 + 日志 + curl */}
         <aside className="min-w-0 space-y-4">
+          {f.method !== "paymentLink" && (
           <Card title={
             f.method === "link" ? "Link 式布局预览"
             : f.method === "applePay" ? "Apple Pay 按钮预览"
@@ -1114,6 +1236,88 @@ export default function AirwallexDemoPage() {
               </p>
             )}
           </Card>
+          )}
+
+          {f.method === "paymentLink" && (
+          <Card title="Payment Link（Airwallex 托管收银台链接）">
+            <Row>
+              <Field label="title（收银台显示的标题）">
+                <input className="input" value={f.plTitle}
+                  onChange={(e) => set("plTitle", e.target.value)}
+                  placeholder="Order #1529" />
+              </Field>
+              <Field label="amount（主单位，10.00 = 10 美元）">
+                <input className="input" value={f.plAmount}
+                  onChange={(e) => set("plAmount", e.target.value)}
+                  placeholder="留空 = Flexible pricing" />
+              </Field>
+              <Field label="currency（Fixed pricing 必填）">
+                <select className="input" value={f.plCurrency}
+                  onChange={(e) => set("plCurrency", e.target.value)}>
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label="description（可选）">
+                <input className="input" value={f.plDescription}
+                  onChange={(e) => set("plDescription", e.target.value)} />
+              </Field>
+              <Field label="reference（可选，仅商户可见）">
+                <input className="input" value={f.plReference}
+                  onChange={(e) => set("plReference", e.target.value)} />
+              </Field>
+              <Field label="expires_at（可选，ISO 8601）">
+                <input className="input" value={f.plExpiresAt}
+                  onChange={(e) => set("plExpiresAt", e.target.value)}
+                  placeholder="2026-12-31T16:00:00Z" />
+              </Field>
+            </Row>
+
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-medium text-slate-700">顾客需填写的信息</p>
+              <div className="flex flex-wrap gap-3">
+                <Toggle label="reusable（可重复使用）" checked={f.plReusable} onChange={(v) => set("plReusable", v)} />
+                <Toggle label="billing_address" checked={f.plCollectBilling} onChange={(v) => set("plCollectBilling", v)} />
+                <Toggle label="phone_number" checked={f.plCollectPhone} onChange={(v) => set("plCollectPhone", v)} />
+                <Toggle label="shipping_address" checked={f.plCollectShipping} onChange={(v) => set("plCollectShipping", v)} />
+                <Toggle label="reference" checked={f.plCollectReference} onChange={(v) => set("plCollectReference", v)} />
+                <Toggle label="message" checked={f.plCollectMessage} onChange={(v) => set("plCollectMessage", v)} />
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <Field label="metadata（可选，每行一个 key=value）">
+                <textarea className="input h-20 font-mono text-xs" value={f.plMetadata}
+                  onChange={(e) => set("plMetadata", e.target.value)}
+                  placeholder={"orderId=12345\nsource=website"} />
+              </Field>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={createPaymentLink} disabled={busy === "pl"} className="btn-primary">
+                {busy === "pl" ? "…" : "生成 Payment Link"}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              amount 用【主单位】（10.00 = 10 美元），与 PaymentIntent 的【最小单位】（1000 = 10 美元）不同。
+              留空 amount 则创建 Flexible pricing 链接，顾客自己填金额。
+            </p>
+
+            {paymentLinkUrl && (
+              <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                <p className="mb-1 text-xs font-medium text-emerald-800">收银台链接</p>
+                <a href={paymentLinkUrl} target="_blank" rel="noopener noreferrer"
+                   className="block break-all font-mono text-xs text-emerald-900 underline">
+                  {paymentLinkUrl}
+                </a>
+                <button
+                  onClick={() => copyText("plurl", paymentLinkUrl)}
+                  className="mt-2 text-xs text-emerald-800 hover:underline">
+                  {copiedKey === "plurl" ? "已复制" : "复制链接"}
+                </button>
+              </div>
+            )}
+          </Card>
+          )}
 
           <Card title="环境自检">
             <ul className="space-y-1 text-xs">

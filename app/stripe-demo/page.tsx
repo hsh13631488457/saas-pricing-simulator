@@ -197,13 +197,30 @@ export default function StripeDemoPage() {
     });
     setBusy(null);
 
-    if (!r.ok || r.data?.code !== 0) {
+    if (!r.ok) {
+      const msg = r.data?.msg ?? r.data?.error ?? "未知错误";
       return pushLog("error",
-        `天枢下单失败 (${r.status})${r.data?.msg ? "：" + r.data.msg : ""}`, r.data);
+        `天枢下单失败 · HTTP ${r.status} · code=${r.data?.code ?? "?"} · ${msg}`,
+        r.data);
+    }
+    if (r.data?.code !== 0) {
+      return pushLog("error",
+        `天枢返回异常 · code=${r.data?.code ?? "?"} · ${r.data?.msg ?? "无 msg"}`,
+        r.data);
     }
 
-    const d = r.data ?? {};
-    if (d.clientSecret) setClientSecret(d.clientSecret);
+    // 天枢响应结构：{ code, msg, data: { clientSecret, publishableKey, ... } }
+    const d = r.data?.data ?? {};
+    // clientSecret 与 setupClientSecret 二者取有值的那个
+    const cs = d.clientSecret || d.setupClientSecret || "";
+
+    if (!cs) {
+      return pushLog("error",
+        "天枢返回里没有 clientSecret / setupClientSecret，无法挂载",
+        r.data);
+    }
+
+    setClientSecret(cs);
     if (d.publishableKey) set("publishableKey", d.publishableKey);
     if (d.currency) set("currency", String(d.currency).toLowerCase());
     if (d.orderAmount != null) set("amount", String(Math.round(Number(d.orderAmount) * 100)));
@@ -212,7 +229,7 @@ export default function StripeDemoPage() {
 
     pushLog("success",
       `天枢下单成功 · subscription=${d.subscriptionId ?? "?"} · status=${d.status ?? "?"} · 已回填 clientSecret / publishableKey`,
-      { clientSecret: d.clientSecret ? d.clientSecret.slice(0, 24) + "…" : null, subscriptionId: d.subscriptionId, status: d.status, currency: d.currency, orderAmount: d.orderAmount });
+      r.data);
   };
 
   /* ── 创建 Checkout Session ── */
