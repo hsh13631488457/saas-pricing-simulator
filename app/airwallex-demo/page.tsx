@@ -84,6 +84,9 @@ interface FormState {
   touTotalCycles: string;
   lineItemsEnabled: boolean;
   lineItemsJson: string;
+  /* confirm() 专用：复用已存的卡 / MIT 协议 */
+  paymentMethodId: string;
+  triggeredBy: "customer" | "merchant";
   /* 天枢后端下单 */
   source: "airwallex" | "tianshu";  tsAppKey: string;
   tsAppSecret: string;
@@ -152,6 +155,8 @@ const DEFAULTS: FormState = {
   lineItemsEnabled: false,
   lineItemsJson: DEFAULT_LINE_ITEMS,
   source: "airwallex",
+  paymentMethodId: "",
+  triggeredBy: "customer",
   tsAppKey: "",
   tsAppSecret: "",
   tsDeviceId: "",
@@ -756,11 +761,22 @@ export default function AirwallexDemoPage() {
       setBusy("confirm");
       pushLog("info", f.method === "link" ? "cardNumber.confirm({…}) …" : "element.confirm({…}) …");
 
-      // 官方 Card / Split card 的 confirm 只接受 intent_id / client_secret
-      const opts = {
+      // confirm() 才接受 payment_consent / customer_id / payment_method_id，
+      // createElement 的 card 选项里没有这些。
+      const opts: any = {
         intent_id: f.intentId.trim(),
         client_secret: f.clientSecret.trim(),
       };
+      if (f.customerId.trim()) opts.customer_id = f.customerId.trim();
+      // 复用已存卡（回头客）：传 payment_method_id + triggered_by: 'customer'
+      if (f.paymentMethodId.trim()) {
+        opts.payment_method_id = f.paymentMethodId.trim();
+        opts.triggered_by = f.triggeredBy;
+      }
+      // 建立 MIT 协议：商家后续可发起扣款
+      if (f.consentEnabled) opts.payment_consent = buildConsent(f);
+
+      pushLog("info", "confirm() 参数", opts);
 
       // 超时保护：卡住时给出明确提示，而不是无限等待
       const timeout = new Promise((_, reject) =>
@@ -768,6 +784,10 @@ export default function AirwallexDemoPage() {
       );
       const intent: any = await Promise.race([target.confirm(opts), timeout]);
       pushLog("success", `支付完成 — intent.status=${intent?.status ?? "?"}`, intent);
+      if (intent?.payment_consent_id) {
+        pushLog("info",
+          `payment_consent_id = ${intent.payment_consent_id} —— 后续 MIT 扣款用它调服务端 Confirm a PaymentIntent（triggered_by: merchant）`);
+      }
     } catch (e: any) {
       pushLog("error", "confirm 失败：" + (e?.message || String(e)), e?.details ?? e?.error);
     } finally {
@@ -1118,6 +1138,72 @@ export default function AirwallexDemoPage() {
                 confirm() 挂在 cardNumber 上，它会汇总另外两个字段。
               </p>
             )}
+          </Card>
+          )}
+
+          {f.method !== "applePay" && f.method !== "paymentLink" && (
+          <Card title="MIT 续费协议 / 复用已存卡（confirm() 参数）">
+            <p className="mb-3 text-xs text-slate-500">
+              注意：Card 元素的 <code>createElement</code> 不接受这些参数，<b>必须传在 confirm() 里</b>。
+              Apple Pay 元素则相反，传在 createElement。
+            </p>
+
+            <Row>
+              <Field label="customer_id（复用已存卡 / 绑定协议时必须）">
+                <input className="input font-mono" value={f.customerId}
+                  onChange={(e) => set("customerId", e.target.value)}
+                  placeholder="cus_..." />
+              </Field>
+              <Field label="payment_method_id（可选，复用已存的卡）">
+                <input className="input font-mono" value={f.paymentMethodId}
+                  onChange={(e) => set("paymentMethodId", e.target.value)}
+                  placeholder="mtd_..." />
+              </Field>
+              <Field label="triggered_by（配合 payment_method_id 使用）">
+                <select className="input" value={f.triggeredBy}
+                  onChange={(e) => set("triggeredBy", e.target.value as any)}>
+                  <option value="customer">customer（CIT，顾客在场）</option>
+                  <option value="merchant">merchant（MIT，商家发起）</option>
+                </select>
+              </Field>
+            </Row>
+
+            <div className="mt-3 border-t border-slate-200 pt-3">
+              <Toggle label="启用 payment_consent（建立可后续扣款的协议）"
+                checked={f.consentEnabled} onChange={(v) => set("consentEnabled", v)} />
+              {f.consentEnabled && (
+                <>
+                  <Row>
+                    <Field label="next_triggered_by">
+                      <select className="input" value={f.consentNextTriggeredBy}
+                        onChange={(e) => set("consentNextTriggeredBy", e.target.value as any)}>
+                        <option value="customer">customer（后续由客户发起）</option>
+                        <option value="merchant">merchant（后续由商户发起，可 MIT 扣款）</option>
+                      </select>
+                    </Field>
+                    {f.consentNextTriggeredBy === "merchant" && (
+                      <Field label="merchant_trigger_reason">
+                        <select className="input" value={f.consentTriggerReason}
+                          onChange={(e) => set("consentTriggerReason", e.target.value as any)}>
+                          <option value="scheduled">scheduled（固定周期，如每月订阅）</option>
+                          <option value="unscheduled">unscheduled（不定期，如余额补扣）</option>
+                          <option value="installments">installments（分期，需 terms_of_use）</option>
+                        </select>
+                      </Field>
+                    )}
+                  </Row>
+                  <Toggle label="启用 terms_of_use（协议条款：金额类型 / 周期 / 起止日）"
+                    checked={f.touEnabled} onChange={(v) => set("touEnabled", v)} />
+                  {f.touEnabled && <TermsOfUse f={f} set={set} />}
+                </>
+              )}
+            </div>
+
+            <p className="mt-3 text-xs text-slate-500">
+              MIT 是两阶段：<b>阶段一</b>（本页）顾客在场时建立协议，成功后日志会给出
+              <code>payment_consent_id</code>；<b>阶段二</b>（服务端）用该 id + 已存 payment_method 调
+              Confirm a PaymentIntent，带 <code>triggered_by: merchant</code> 完成扣款，不经过前端 SDK。
+            </p>
           </Card>
           )}
 
