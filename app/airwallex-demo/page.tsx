@@ -1142,38 +1142,48 @@ export default function AirwallexDemoPage() {
           )}
 
           {f.method !== "applePay" && f.method !== "paymentLink" && (
-          <Card title="MIT 续费协议 / 复用已存卡（confirm() 参数）">
+          <Card title="复用已存卡（confirm() 参数）">
             <p className="mb-3 text-xs text-slate-500">
-              注意：Card 元素的 <code>createElement</code> 不接受这些参数，<b>必须传在 confirm() 里</b>。
+              Card 元素的 <code>createElement</code> 不接受这些参数，<b>必须传在 confirm() 里</b>。
               Apple Pay 元素则相反，传在 createElement。
             </p>
 
             <Row>
-              <Field label="customer_id（复用已存卡 / 绑定协议时必须）">
+              <Field label="customer_id（复用已存卡时必须）">
                 <input className="input font-mono" value={f.customerId}
                   onChange={(e) => set("customerId", e.target.value)}
                   placeholder="cus_..." />
               </Field>
-              <Field label="payment_method_id（可选，复用已存的卡）">
+              <Field label="payment_method_id（可选，指定要复用的卡）">
                 <input className="input font-mono" value={f.paymentMethodId}
                   onChange={(e) => set("paymentMethodId", e.target.value)}
                   placeholder="mtd_..." />
               </Field>
-              <Field label="triggered_by（配合 payment_method_id 使用）">
+              <Field label="triggered_by（这次扣款由谁发起）">
                 <select className="input" value={f.triggeredBy}
                   onChange={(e) => set("triggeredBy", e.target.value as any)}>
-                  <option value="customer">customer（CIT，顾客在场）</option>
-                  <option value="merchant">merchant（MIT，商家发起）</option>
+                  <option value="customer">customer（顾客在场，主动选卡付款）</option>
+                  <option value="merchant">merchant（商家发起）</option>
                 </select>
               </Field>
             </Row>
+            <p className="mt-1 text-xs text-slate-500">
+              triggered_by 描述的是<b>本次这笔</b>扣款由谁发起，<b>不是</b>用来触发续费的。
+              传了 payment_method_id 才会带上它。不填 payment_method_id 时，走的是页面上的新卡输入。
+            </p>
+          </Card>
+          )}
 
-            <div className="mt-3 border-t border-slate-200 pt-3">
-              <Toggle label="启用 payment_consent（建立可后续扣款的协议）"
-                checked={f.consentEnabled} onChange={(v) => set("consentEnabled", v)} />
-              {f.consentEnabled && (
-                <>
-                  <Row>
+          {f.method !== "applePay" && f.method !== "paymentLink" && (
+          <Card title="建立 MIT 续费协议（confirm() 参数）">
+            <p className="mb-3 text-xs text-slate-500">
+              想知道<b>以后能不能由商家自动扣款</b>，看这里 —— 这才是建立协议的开关。
+            </p>
+            <Toggle label="启用 payment_consent（建立可后续扣款的协议）"
+              checked={f.consentEnabled} onChange={(v) => set("consentEnabled", v)} />
+            {f.consentEnabled && (
+              <>
+                <Row>
                     <Field label="next_triggered_by">
                       <select className="input" value={f.consentNextTriggeredBy}
                         onChange={(e) => set("consentNextTriggeredBy", e.target.value as any)}>
@@ -1197,7 +1207,6 @@ export default function AirwallexDemoPage() {
                   {f.touEnabled && <TermsOfUse f={f} set={set} />}
                 </>
               )}
-            </div>
 
             <p className="mt-3 text-xs text-slate-500">
               MIT 是两阶段：<b>阶段一</b>（本页）顾客在场时建立协议，成功后日志会给出
